@@ -2,6 +2,7 @@
 .venv/
 __pycache__/
 .pytest_cache/
+.vscode/
 
 # Veritabani ve yedekler (hasta verisi icerebilir, Git'e girmemeli)
 *.db

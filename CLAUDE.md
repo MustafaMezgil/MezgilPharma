@@ -187,3 +187,16 @@ Aynı işi yapan ikinci bir dosya/fonksiyon oluşturma. Önce mevcut kodda ara.
 14. Mobil/web panel (yalnızca özet: ciro, kritik stok, miat; hasta verisi yok)
 
 Şu an üzerinde çalışılan adım: **1**
+
+---
+
+## 7. Gerçek kullanımdan önce yapılacaklar
+
+Bu maddeler tamamlanmadan program gerçek bir eczanede, gerçek veriyle kullanılmaz.
+
+- [ ] SSL ve sunucu kimlik doğrulaması
+- [ ] PostgreSQL erişim izinleri ve güvenlik duvarı
+- [ ] İki bilgisayarla gerçek deneme
+- [ ] Günlük otomatik yedek ve yedeğin başka yere kopyalanması
+- [ ] Disk şifreleme (BitLocker)
+- [ ] Bağlantı beklemesinin arka plana alınması
