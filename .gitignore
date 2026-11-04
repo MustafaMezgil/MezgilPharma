@@ -1,0 +1,18 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+
+# Veritabani ve yedekler (hasta verisi icerebilir, Git'e girmemeli)
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+yedekler/
+
+# Loglar
+logs/
+
+# PyInstaller ciktilari
+build/
+dist/
