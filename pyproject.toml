@@ -3,7 +3,7 @@ testpaths = ["tests"]
 pythonpath = ["."]
 
 [tool.pyright]
-include = ["main.py", "ayarlar.py", "gunluk.py", "veritabani", "arayuz", "tests"]
+include = ["main.py", "ayarlar.py", "gunluk.py", "veritabani", "moduller", "arayuz", "tests"]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.14"

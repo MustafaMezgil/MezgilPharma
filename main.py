@@ -4,11 +4,13 @@ import logging
 import sqlite3
 import sys
 
-from PyQt6.QtWidgets import QApplication, QMessageBox
+from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from arayuz.ana_pencere import AnaPencere
+from arayuz.giris_penceresi import GirisPenceresi, IlkKullaniciPenceresi
 from ayarlar import Ayarlar, ayarlari_yukle
 from gunluk import gunlugu_baslat
+from moduller.kullanici.servis import Kullanici, aktif_kullanici_var_mi
 from veritabani.baglanti import baglanti_ac
 from veritabani.migration import MigrationHatasi, guncel_surum, migrationlari_uygula
 
@@ -31,12 +33,27 @@ def veritabanini_hazirla(ayarlar: Ayarlar) -> int:
         baglanti.close()
 
 
+def kullanici_girisi(ayarlar: Ayarlar) -> Kullanici | None:
+    """Gerekirse ilk hesabi olusturur, giris yaptirir. Vazgecilirse None dondurur."""
+    baglanti = baglanti_ac(ayarlar.veritabani_yolu)
+    try:
+        if not aktif_kullanici_var_mi(baglanti):
+            if IlkKullaniciPenceresi(baglanti).exec() != QDialog.DialogCode.Accepted:
+                return None
+        pencere = GirisPenceresi(baglanti)
+        pencere.exec()
+        return pencere.kullanici
+    finally:
+        baglanti.close()
+
+
 def baslat(ayarlar: Ayarlar) -> int:
     """Programi calistirir ve cikis kodunu dondurur (0: sorunsuz, 1: acilamadi)."""
     gunlugu_baslat(ayarlar.log_klasoru)
     uygulama = QApplication.instance() or QApplication(sys.argv)
     try:
         surum = veritabanini_hazirla(ayarlar)
+        kullanici = kullanici_girisi(ayarlar)
     except MigrationHatasi as hata:
         _log.exception("Veritabani guncellenemedi")
         QMessageBox.critical(None, _BASLIK, str(hata))
@@ -46,7 +63,10 @@ def baslat(ayarlar: Ayarlar) -> int:
         QMessageBox.critical(None, _BASLIK, _GENEL_MESAJ)
         return 1
 
-    pencere = AnaPencere(ayarlar.ortam, surum)
+    if kullanici is None:
+        return 0
+
+    pencere = AnaPencere(ayarlar.ortam, surum, kullanici)
     pencere.show()
     return uygulama.exec()
 
