@@ -3,14 +3,19 @@
 import hashlib
 import logging
 import re
-import sqlite3
+from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
+
+import psycopg
+
+from veritabani.baglanti import Baglanti
 
 MIGRATIONS_KLASORU = Path(__file__).resolve().parent / "migrations"
 
 _DOSYA_ADI_KURALI = re.compile(r"(\d{3})_[a-z0-9_]+\.sql")
+# Ayni anda tek guncelleme calissin diye kullanilan kilidin numarasi (rastgele secildi).
+_GUNCELLEME_KILIDI = 7203114
 
 _log = logging.getLogger(__name__)
 
@@ -27,26 +32,15 @@ class _Migration:
     ozet: str
 
 
-def _surum_tablosunu_hazirla(baglanti: sqlite3.Connection) -> None:
-    baglanti.execute(
-        """
-        CREATE TABLE IF NOT EXISTS schema_surum (
-            surum INTEGER PRIMARY KEY,
-            dosya_adi TEXT NOT NULL,
-            ozet TEXT NOT NULL,
-            uygulanma_tarihi TEXT NOT NULL
-        )
-        """
-    )
-
-
-def _uygulanmis_ozetler(baglanti: sqlite3.Connection) -> dict[int, str]:
-    _surum_tablosunu_hazirla(baglanti)
+def _uygulanmis_ozetler(baglanti: Baglanti) -> dict[int, str]:
+    tablo = baglanti.execute("SELECT to_regclass('schema_surum') AS ad").fetchone()
+    if tablo is None or tablo["ad"] is None:
+        return {}
     satirlar = baglanti.execute("SELECT surum, ozet FROM schema_surum ORDER BY surum")
     return {satir["surum"]: satir["ozet"] for satir in satirlar}
 
 
-def guncel_surum(baglanti: sqlite3.Connection) -> int:
+def guncel_surum(baglanti: Baglanti) -> int:
     """Veritabanina uygulanmis son migration numarasini dondurur (bos ise 0)."""
     return max(_uygulanmis_ozetler(baglanti), default=0)
 
@@ -98,35 +92,30 @@ def _uygulanmislari_dogrula(
             )
 
 
-def _yedek_al(baglanti: sqlite3.Connection, klasor: Path, surum: int) -> None:
-    klasor.mkdir(parents=True, exist_ok=True)
-    zaman = datetime.now().strftime("%Y%m%dT%H%M%S")
-    hedef_yolu = klasor / f"yedek_surum{surum:03d}_{zaman}.db"
-    hedef = sqlite3.connect(hedef_yolu)
-    try:
-        baglanti.backup(hedef)
-    finally:
-        hedef.close()
-    _log.info("Migration oncesi yedek alindi: %s", hedef_yolu.name)
-
-
-def _uygula(baglanti: sqlite3.Connection, migration: _Migration) -> None:
-    try:
-        # BEGIN ile tum dosya tek islem olur: hata olursa hicbir satiri kalici olmaz.
-        baglanti.executescript(f"BEGIN;\n{migration.sql}")
-        baglanti.execute(
-            "INSERT INTO schema_surum (surum, dosya_adi, ozet, uygulanma_tarihi) "
-            "VALUES (?, ?, ?, ?)",
-            (
-                migration.surum,
-                migration.dosya_adi,
-                migration.ozet,
-                datetime.now().isoformat(timespec="seconds"),
-            ),
+def surum_dogrula(baglanti: Baglanti, *, klasor: Path = MIGRATIONS_KLASORU) -> int:
+    """Veritabani bu programla uyumluysa surumunu dondurur. Hicbir sey degistirmez."""
+    migrationlar = _migrationlari_oku(klasor)
+    uygulanmis = _uygulanmis_ozetler(baglanti)
+    _uygulanmislari_dogrula(uygulanmis, migrationlar)
+    surum = max(uygulanmis, default=0)
+    if surum < len(migrationlar):
+        raise MigrationHatasi(
+            "Veritabanı güncellenmemiş. Lütfen ana makinede veritabanı "
+            "güncellemesini çalıştırın."
         )
-        baglanti.commit()
-    except sqlite3.Error as hata:
-        baglanti.rollback()
+    return surum
+
+
+def _uygula(baglanti: Baglanti, migration: _Migration) -> None:
+    try:
+        # Tum dosya tek islemdir: hata olursa hicbir satiri kalici olmaz.
+        with baglanti.transaction():
+            baglanti.execute(migration.sql.encode("utf-8"))
+            baglanti.execute(
+                "INSERT INTO schema_surum (surum, dosya_adi, ozet) VALUES (%s, %s, %s)",
+                (migration.surum, migration.dosya_adi, migration.ozet),
+            )
+    except psycopg.Error as hata:
         raise MigrationHatasi(
             f"{migration.dosya_adi} uygulanamadı, değişiklikler geri alındı."
         ) from hata
@@ -134,21 +123,39 @@ def _uygula(baglanti: sqlite3.Connection, migration: _Migration) -> None:
 
 
 def migrationlari_uygula(
-    baglanti: sqlite3.Connection,
+    baglanti: Baglanti,
     *,
-    yedek_klasoru: Path,
+    yedek_al: Callable[[int], None],
     klasor: Path = MIGRATIONS_KLASORU,
 ) -> list[int]:
-    """Bekleyen migration'lari sirayla uygular ve uygulanan numaralari dondurur."""
+    """Bekleyen migration'lari sirayla uygular ve uygulanan numaralari dondurur.
+
+    Yalnizca sahip hesabiyla calisir. Daha once uygulanmis migration varken yeni
+    migration gelirse, once yedek_al mevcut surum numarasiyla cagrilir.
+    """
     migrationlar = _migrationlari_oku(klasor)
-    uygulanmis = _uygulanmis_ozetler(baglanti)
-    _uygulanmislari_dogrula(uygulanmis, migrationlar)
+    baglanti.execute("SELECT pg_advisory_lock(%s)", (_GUNCELLEME_KILIDI,))
+    try:
+        baglanti.execute(
+            """
+            CREATE TABLE IF NOT EXISTS schema_surum (
+                surum INTEGER PRIMARY KEY,
+                dosya_adi TEXT NOT NULL,
+                ozet TEXT NOT NULL,
+                uygulanma_tarihi TIMESTAMPTZ NOT NULL DEFAULT now()
+            )
+            """
+        )
+        uygulanmis = _uygulanmis_ozetler(baglanti)
+        _uygulanmislari_dogrula(uygulanmis, migrationlar)
 
-    son_surum = max(uygulanmis, default=0)
-    bekleyenler = [m for m in migrationlar if m.surum > son_surum]
-    if bekleyenler and uygulanmis:
-        _yedek_al(baglanti, yedek_klasoru, son_surum)
+        son_surum = max(uygulanmis, default=0)
+        bekleyenler = [m for m in migrationlar if m.surum > son_surum]
+        if bekleyenler and uygulanmis:
+            yedek_al(son_surum)
 
-    for migration in bekleyenler:
-        _uygula(baglanti, migration)
-    return [migration.surum for migration in bekleyenler]
+        for migration in bekleyenler:
+            _uygula(baglanti, migration)
+        return [migration.surum for migration in bekleyenler]
+    finally:
+        baglanti.execute("SELECT pg_advisory_unlock(%s)", (_GUNCELLEME_KILIDI,))

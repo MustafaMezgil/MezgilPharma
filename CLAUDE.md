@@ -1,6 +1,8 @@
 # Eczane Otomasyonu – Claude Code Talimatları
 
-Bu proje, gerçek bir eczanede kullanılacak masaüstü eczane otomasyon programıdır.
+Bu proje, farklı eczanelere kurulacak masaüstü eczane otomasyon programıdır.
+Her eczanenin kendi veritabanı vardır; eczaneler arasında veri paylaşılmaz.
+Bilgisayar sayısı eczaneden eczaneye değişir, kod tek eczaneye özel varsayım içermez.
 Proje sahibi bir eczacıdır, ileri düzey yazılımcı değildir. Ona her zaman
 **Türkçe, sade ve adım adım** açıklama yap.
 
@@ -10,9 +12,11 @@ Proje sahibi bir eczacıdır, ileri düzey yazılımcı değildir. Ona her zaman
 
 - **Dil:** Python 3.14, sanal ortam `.venv`
 - **Arayüz:** PyQt6 (tek arayüz katmanı; pywebview, Tkinter, React vb. ekleme)
-- **Veritabanı:** SQLite (`eczane.db`), şema değişiklikleri yalnızca migration ile
+- **Veritabanı:** PostgreSQL 18 (`psycopg` ile), şema değişiklikleri yalnızca migration ile.
+  Sunucu eczanenin ana makinesinde çalışır, diğer bilgisayarlar yerel ağdan bağlanır.
+  Tek bilgisayarlı eczanede ana makine ile kasa aynı bilgisayardır.
 - **Tip kontrolü:** Pyright
-- **Testler:** pytest
+- **Testler:** pytest; veritabanı testleri gerçek PostgreSQL'de, yalnızca `eczane_pytest` üzerinde çalışır
 - **Geliştirme ortamı:** Windows, PowerShell (VS Code terminali). Terminal komutlarını
   PowerShell'e uygun ver; Linux/macOS komutları (`ls -la`, `cat`, `export`, `/` ile yol) kullanma.
 - **Paketleme:** PyInstaller (hedef işletim sistemi: **Windows**)
@@ -32,10 +36,14 @@ eczane/
 ├── .env.example          # örnek değişken adları (değer içermez)
 ├── main.py               # programın giriş noktası
 ├── ayarlar.py            # .env'den ayarları okur, TEST/CANLI ortam seçimi
+├── gunluk.py             # log dosyası (hasta verisi yazılmaz)
 ├── veritabani/
-│   ├── baglanti.py       # SQLite bağlantısı
+│   ├── baglanti.py       # PostgreSQL bağlantısı
+│   ├── migration.py      # migration'ları uygular, sürüm uyumunu doğrular
+│   ├── guncelle.py       # şema güncellemesi, yedek ve yetkiler (yalnızca ana makinede)
 │   └── migrations/       # 001_ilk_sema.sql, 002_... (numaralı, sırayla)
 ├── moduller/
+│   ├── kullanici/        # kullanıcı girişi, roller, parola özetleme
 │   ├── ilac/             # ilaç kartları
 │   ├── stok/             # stok, miat, ölü stok, akıllı sipariş önerisi
 │   ├── satis/            # satış ekranı, kasa
@@ -72,10 +80,17 @@ Aynı işi yapan ikinci bir dosya/fonksiyon oluşturma. Önce mevcut kodda ara.
 - Yuvarlama kuralını tek bir yardımcı fonksiyonda topla.
 
 ### Veritabanı
-- SQL sorguları **her zaman parametreli** (`?`). String birleştirme ile SQL yazma.
+- SQL sorguları **her zaman parametreli** (`%s`). String birleştirme ile SQL yazma.
 - Tabloyu doğrudan değiştirme; yeni numaralı migration dosyası oluştur.
-- Tarihler ISO formatında (`YYYY-MM-DD`, `YYYY-MM-DDTHH:MM:SS`).
-- Silme işlemi yerine mümkünse `aktif = 0` (soft delete).
+- Uygulanmış migration dosyası değiştirilmez.
+- Tarihler PostgreSQL tarih türlerinde (`DATE`, `TIMESTAMPTZ`) saklanır; kayıt saati
+  sunucudan alınır. Dışa aktarımda ISO biçimi (`YYYY-MM-DD`, `YYYY-MM-DDTHH:MM:SS`) kullanılır.
+- Para ve fiyat sütunları `NUMERIC`; `FLOAT`/`REAL` kullanılmaz.
+- Silme işlemi yerine mümkünse `aktif = FALSE` (soft delete).
+- Şema güncellemesini yalnızca ana makine yapar (`eczane_sahip` hesabı, güncelleme öncesi yedek).
+  Kasalar `eczane_uygulama` hesabıyla bağlanır; tablo yapısını değiştiremez, `erisim_log`
+  kayıtlarını değiştirip silemez. Yeni yetki kuralları `veritabani/guncelle.py` içindedir.
+- Ağ üzerinden bağlantıda SSL zorunludur.
 
 ### Medula ve ITS
 - Varsayılan ortam **TEST**. CANLI ortam yalnızca `ayarlar.py`'deki tek bir
@@ -163,11 +178,12 @@ Aynı işi yapan ikinci bir dosya/fonksiyon oluşturma. Önce mevcut kodda ara.
 5. Raporlar (miat, ölü stok, ciro)
 6. Akıllı stok ve sipariş önerisi
 7. Kullanım tarifi etiketi (önce elle girilen dozla)
-8. Hasta kartı ve hatırlatmalar
-9. ITS (test ortamında)
-10. Medula (test ortamında), etikete Medula verisinin bağlanması
-11. Reçete/rapor kontrolü (kural motoru + yapay zeka)
-12. Yazar kasa (ÖKC) ve e-fatura/e-arşiv
-13. Mobil/web panel (yalnızca özet: ciro, kritik stok, miat; hasta verisi yok)
+8. Günlük otomatik yedekleme ve disk şifreleme
+9. Hasta kartı ve hatırlatmalar
+10. ITS (test ortamında)
+11. Medula (test ortamında), etikete Medula verisinin bağlanması
+12. Reçete/rapor kontrolü (kural motoru + yapay zeka)
+13. Yazar kasa (ÖKC) ve e-fatura/e-arşiv
+14. Mobil/web panel (yalnızca özet: ciro, kritik stok, miat; hasta verisi yok)
 
 Şu an üzerinde çalışılan adım: **1**

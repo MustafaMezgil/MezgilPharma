@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -5,70 +6,77 @@ from PyQt6.QtWidgets import QDialog, QMessageBox, QWidget
 
 import main
 from arayuz.giris_penceresi import GirisPenceresi, IlkKullaniciPenceresi
-from ayarlar import Ayarlar, Ortam
+from ayarlar import AyarHatasi, Ayarlar, Ortam, VeritabaniAyari
 from moduller.kullanici.servis import Rol, kullanici_olustur
-from veritabani.baglanti import baglanti_ac
-from veritabani.migration import guncel_surum
+from veritabani.baglanti import Baglanti
 
 PAROLA = "Deneme-Parola1"
 
 
-def _ayarlar(klasor: Path) -> Ayarlar:
+@pytest.fixture
+def ayarlar(uygulama_ayari: VeritabaniAyari, tmp_path: Path) -> Ayarlar:
     return Ayarlar(
         ortam=Ortam.TEST,
-        veritabani_yolu=klasor / "veri" / "eczane_test.db",
-        yedek_klasoru=klasor / "yedekler",
-        log_klasoru=klasor / "logs",
+        veritabani=uygulama_ayari,
+        sahip=None,
+        yedek_klasoru=tmp_path / "yedekler",
+        log_klasoru=tmp_path / "logs",
     )
 
 
-def _kullanici_ekle(ayarlar: Ayarlar) -> None:
-    main.veritabanini_hazirla(ayarlar)
-    baglanti = baglanti_ac(ayarlar.veritabani_yolu)
-    kullanici_olustur(baglanti, "test_eczaci", "Test Kişi", PAROLA, Rol.ECZACI)
-    baglanti.close()
+@pytest.fixture
+def mesajlar(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    toplanan: list[str] = []
+
+    def _kaydet(_ust: QWidget | None, _baslik: str, metin: str) -> None:
+        toplanan.append(metin)
+
+    monkeypatch.setattr(QMessageBox, "critical", _kaydet)
+    return toplanan
 
 
-def test_veritabani_son_surume_hazirlanir(tmp_path: Path) -> None:
-    ayarlar = _ayarlar(tmp_path)
+@pytest.fixture
+def kayitli_kullanici(uygulama_baglanti: Baglanti) -> None:
+    kullanici_olustur(uygulama_baglanti, "test_eczaci", "Test Kişi", PAROLA, Rol.ECZACI)
 
-    surum = main.veritabanini_hazirla(ayarlar)
 
-    assert surum >= 1
-    baglanti = baglanti_ac(ayarlar.veritabani_yolu)
-    assert guncel_surum(baglanti) == surum
-    baglanti.close()
+@pytest.mark.usefixtures("hazir_veritabani")
+def test_guncel_veritabaninda_surum_dondurulur(ayarlar: Ayarlar) -> None:
+    assert main.veritabanini_dogrula(ayarlar) >= 1
+
+
+@pytest.mark.usefixtures("qt_uygulamasi", "temiz_gunluk", "temiz_veritabani")
+def test_guncellenmemis_veritabaninda_turkce_mesaj_gosterilir(
+    ayarlar: Ayarlar, mesajlar: list[str]
+) -> None:
+    assert main.baslat(ayarlar) == 1
+    assert len(mesajlar) == 1
+    assert "ana makinede" in mesajlar[0]
 
 
 @pytest.mark.usefixtures("qt_uygulamasi", "temiz_gunluk")
-def test_bozuk_veritabaninda_turkce_mesaj_gosterilir_ve_acilmaz(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_ana_makineye_ulasilamazsa_turkce_mesaj_gosterilir_parola_loga_yazilmaz(
+    ayarlar: Ayarlar, mesajlar: list[str]
 ) -> None:
-    ayarlar = _ayarlar(tmp_path)
-    ayarlar.veritabani_yolu.parent.mkdir(parents=True)
-    ayarlar.veritabani_yolu.write_bytes(b"bu bir veritabani dosyasi degil" * 100)
-    mesajlar: list[str] = []
-
-    def _kaydet(_ust: QWidget | None, _baslik: str, metin: str) -> None:
-        mesajlar.append(metin)
-
-    monkeypatch.setattr(QMessageBox, "critical", _kaydet)
-
-    assert main.baslat(ayarlar) == 1
-    assert len(mesajlar) == 1
-    assert "Veritabanı açılamadı" in mesajlar[0]
-    assert "file is not a database" not in mesajlar[0]
-    assert "file is not a database" in (ayarlar.log_klasoru / "eczane.log").read_text(
-        encoding="utf-8"
+    ulasilamaz = replace(
+        ayarlar,
+        veritabani=replace(ayarlar.veritabani, port=1, parola="sahte-gizli-parola"),
     )
 
+    assert main.baslat(ulasilamaz) == 1
 
-@pytest.mark.usefixtures("qt_uygulamasi")
+    assert len(mesajlar) == 1
+    assert "Ana makine" in mesajlar[0]
+    assert "connection" not in mesajlar[0]
+    log = (ulasilamaz.log_klasoru / "eczane.log").read_text(encoding="utf-8")
+    assert "Veritabanina ulasilamadi" in log
+    assert "sahte-gizli-parola" not in log
+
+
+@pytest.mark.usefixtures("qt_uygulamasi", "hazir_veritabani")
 def test_kullanici_yoksa_ilk_kullanici_sorulur_ve_iptal_edilebilir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ayarlar: Ayarlar, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ayarlar = _ayarlar(tmp_path)
-    main.veritabanini_hazirla(ayarlar)
     acilanlar: list[str] = []
 
     def _ilk(_pencere: IlkKullaniciPenceresi) -> int:
@@ -86,13 +94,10 @@ def test_kullanici_yoksa_ilk_kullanici_sorulur_ve_iptal_edilebilir(
     assert acilanlar == ["ilk"]
 
 
-@pytest.mark.usefixtures("qt_uygulamasi")
+@pytest.mark.usefixtures("qt_uygulamasi", "kayitli_kullanici")
 def test_kullanici_varsa_dogrudan_giris_ekrani_acilir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ayarlar: Ayarlar, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ayarlar = _ayarlar(tmp_path)
-    _kullanici_ekle(ayarlar)
-
     def _giris(pencere: GirisPenceresi) -> int:
         pencere.kullanici_adi_alani.setText("test_eczaci")
         pencere.parola_alani.setText(PAROLA)
@@ -107,13 +112,10 @@ def test_kullanici_varsa_dogrudan_giris_ekrani_acilir(
     assert kullanici.kullanici_adi == "test_eczaci"
 
 
-@pytest.mark.usefixtures("qt_uygulamasi", "temiz_gunluk")
+@pytest.mark.usefixtures("qt_uygulamasi", "temiz_gunluk", "kayitli_kullanici")
 def test_giris_iptal_edilirse_ana_pencere_acilmadan_cikilir(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ayarlar: Ayarlar, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    ayarlar = _ayarlar(tmp_path)
-    _kullanici_ekle(ayarlar)
-
     def _iptal(_pencere: GirisPenceresi) -> int:
         return QDialog.DialogCode.Rejected.value
 
@@ -124,3 +126,16 @@ def test_giris_iptal_edilirse_ana_pencere_acilmadan_cikilir(
     monkeypatch.setattr(main, "AnaPencere", _ana_pencere_acilmamali)
 
     assert main.baslat(ayarlar) == 0
+
+
+@pytest.mark.usefixtures("qt_uygulamasi")
+def test_ayar_eksikse_turkce_mesaj_gosterilir(
+    monkeypatch: pytest.MonkeyPatch, mesajlar: list[str]
+) -> None:
+    def _hatali_yukleme() -> Ayarlar:
+        raise AyarHatasi("Ayarlar eksik: ECZANE_DB_SUNUCU")
+
+    monkeypatch.setattr(main, "ayarlari_yukle", _hatali_yukleme)
+
+    assert main.calistir() == 1
+    assert mesajlar == ["Ayarlar eksik: ECZANE_DB_SUNUCU"]

@@ -16,3 +16,4 @@ logs/
 # PyInstaller ciktilari
 build/
 dist/
+*.dump

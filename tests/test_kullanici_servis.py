@@ -1,6 +1,4 @@
-import sqlite3
-from pathlib import Path
-
+import psycopg
 import pytest
 
 from moduller.kullanici.servis import (
@@ -10,92 +8,86 @@ from moduller.kullanici.servis import (
     giris_dogrula,
     kullanici_olustur,
 )
-from veritabani.baglanti import baglanti_ac
-from veritabani.migration import migrationlari_uygula
+from veritabani.baglanti import Baglanti
 
 PAROLA = "Deneme-Parola1"
 
 
-@pytest.fixture
-def baglanti(tmp_path: Path) -> sqlite3.Connection:
-    baglanti = baglanti_ac(tmp_path / "deneme.db")
-    migrationlari_uygula(baglanti, yedek_klasoru=tmp_path / "yedekler")
-    return baglanti
-
-
-def _olustur(baglanti: sqlite3.Connection, kullanici_adi: str = "test_eczaci") -> None:
+def _olustur(baglanti: Baglanti, kullanici_adi: str = "test_eczaci") -> None:
     kullanici_olustur(baglanti, kullanici_adi, "Test Kişi", PAROLA, Rol.ECZACI)
 
 
-def test_bos_veritabaninda_aktif_kullanici_yoktur(baglanti: sqlite3.Connection) -> None:
-    assert not aktif_kullanici_var_mi(baglanti)
+def test_bos_veritabaninda_aktif_kullanici_yoktur(uygulama_baglanti: Baglanti) -> None:
+    assert not aktif_kullanici_var_mi(uygulama_baglanti)
 
 
-def test_olusturulan_kullanici_giris_yapabilir(baglanti: sqlite3.Connection) -> None:
-    _olustur(baglanti)
+def test_olusturulan_kullanici_giris_yapabilir(uygulama_baglanti: Baglanti) -> None:
+    _olustur(uygulama_baglanti)
 
-    kullanici = giris_dogrula(baglanti, "test_eczaci", PAROLA)
+    kullanici = giris_dogrula(uygulama_baglanti, "test_eczaci", PAROLA)
 
-    assert aktif_kullanici_var_mi(baglanti)
+    assert aktif_kullanici_var_mi(uygulama_baglanti)
     assert kullanici is not None
     assert kullanici.ad_soyad == "Test Kişi"
     assert kullanici.rol is Rol.ECZACI
 
 
-def test_varsayilan_rol_personeldir(baglanti: sqlite3.Connection) -> None:
-    baglanti.execute(
-        "INSERT INTO kullanicilar (kullanici_adi, ad_soyad, parola_ozeti, olusturma_tarihi) "
-        "VALUES (?, ?, ?, ?)",
-        ("eski_kayit", "Test", "x", "2026-01-01T10:00:00"),
+def test_varsayilan_rol_personeldir(uygulama_baglanti: Baglanti) -> None:
+    uygulama_baglanti.execute(
+        "INSERT INTO kullanicilar (kullanici_adi, ad_soyad, parola_ozeti) VALUES (%s, %s, %s)",
+        ("eski_kayit", "Test", "x"),
     )
-    satir = baglanti.execute(
-        "SELECT rol FROM kullanicilar WHERE kullanici_adi = ?", ("eski_kayit",)
+    satir = uygulama_baglanti.execute(
+        "SELECT rol, olusturma_tarihi FROM kullanicilar WHERE kullanici_adi = %s",
+        ("eski_kayit",),
     ).fetchone()
+    assert satir is not None
     assert satir["rol"] == "personel"
+    assert satir["olusturma_tarihi"] is not None
 
 
-def test_tanimsiz_rol_veritabanina_yazilamaz(baglanti: sqlite3.Connection) -> None:
-    with pytest.raises(sqlite3.IntegrityError):
-        baglanti.execute(
-            "INSERT INTO kullanicilar "
-            "(kullanici_adi, ad_soyad, parola_ozeti, olusturma_tarihi, rol) "
-            "VALUES (?, ?, ?, ?, ?)",
-            ("biri", "Test", "x", "2026-01-01T10:00:00", "yonetici"),
+def test_tanimsiz_rol_veritabanina_yazilamaz(uygulama_baglanti: Baglanti) -> None:
+    with pytest.raises(psycopg.errors.CheckViolation):
+        uygulama_baglanti.execute(
+            "INSERT INTO kullanicilar (kullanici_adi, ad_soyad, parola_ozeti, rol) "
+            "VALUES (%s, %s, %s, %s)",
+            ("biri", "Test", "x", "yonetici"),
         )
 
 
-def test_parola_duz_metin_olarak_saklanmaz(baglanti: sqlite3.Connection) -> None:
-    _olustur(baglanti)
-    satir = baglanti.execute("SELECT parola_ozeti FROM kullanicilar").fetchone()
+def test_parola_duz_metin_olarak_saklanmaz(uygulama_baglanti: Baglanti) -> None:
+    _olustur(uygulama_baglanti)
+    satir = uygulama_baglanti.execute("SELECT parola_ozeti FROM kullanicilar").fetchone()
+    assert satir is not None
     assert PAROLA not in satir["parola_ozeti"]
 
 
-def test_yanlis_parola_ile_giris_yapilamaz(baglanti: sqlite3.Connection) -> None:
-    _olustur(baglanti)
-    assert giris_dogrula(baglanti, "test_eczaci", "yanlis-parola") is None
+def test_yanlis_parola_ile_giris_yapilamaz(uygulama_baglanti: Baglanti) -> None:
+    _olustur(uygulama_baglanti)
+    assert giris_dogrula(uygulama_baglanti, "test_eczaci", "yanlis-parola") is None
 
 
-def test_olmayan_kullanici_ile_giris_yapilamaz(baglanti: sqlite3.Connection) -> None:
-    assert giris_dogrula(baglanti, "olmayan", PAROLA) is None
+def test_olmayan_kullanici_ile_giris_yapilamaz(uygulama_baglanti: Baglanti) -> None:
+    assert giris_dogrula(uygulama_baglanti, "olmayan", PAROLA) is None
 
 
-def test_pasif_kullanici_giris_yapamaz(baglanti: sqlite3.Connection) -> None:
-    _olustur(baglanti)
-    baglanti.execute("UPDATE kullanicilar SET aktif = ?", (0,))
+def test_pasif_kullanici_giris_yapamaz(uygulama_baglanti: Baglanti) -> None:
+    _olustur(uygulama_baglanti)
+    uygulama_baglanti.execute("UPDATE kullanicilar SET aktif = FALSE")
 
-    assert giris_dogrula(baglanti, "test_eczaci", PAROLA) is None
-    assert not aktif_kullanici_var_mi(baglanti)
+    assert giris_dogrula(uygulama_baglanti, "test_eczaci", PAROLA) is None
+    assert not aktif_kullanici_var_mi(uygulama_baglanti)
 
 
-def test_ayni_kullanici_adi_iki_kez_kullanilamaz(baglanti: sqlite3.Connection) -> None:
-    _olustur(baglanti)
+def test_ayni_kullanici_adi_iki_kez_kullanilamaz(uygulama_baglanti: Baglanti) -> None:
+    _olustur(uygulama_baglanti)
     with pytest.raises(KullaniciHatasi, match="kullanılıyor"):
-        _olustur(baglanti)
+        _olustur(uygulama_baglanti)
 
 
-def test_kullanici_adi_bosluklari_temizlenir(baglanti: sqlite3.Connection) -> None:
-    _olustur(baglanti, "  test_eczaci  ")
-    assert giris_dogrula(baglanti, " test_eczaci ", PAROLA) is not None
+def test_kullanici_adi_bosluklari_temizlenir(uygulama_baglanti: Baglanti) -> None:
+    _olustur(uygulama_baglanti, "  test_eczaci  ")
+    assert giris_dogrula(uygulama_baglanti, " test_eczaci ", PAROLA) is not None
 
 
 @pytest.mark.parametrize(
@@ -107,12 +99,12 @@ def test_kullanici_adi_bosluklari_temizlenir(baglanti: sqlite3.Connection) -> No
     ],
 )
 def test_eksik_bilgiyle_kullanici_olusturulamaz(
-    baglanti: sqlite3.Connection,
+    uygulama_baglanti: Baglanti,
     kullanici_adi: str,
     ad_soyad: str,
     parola: str,
     beklenen: str,
 ) -> None:
     with pytest.raises(KullaniciHatasi, match=beklenen):
-        kullanici_olustur(baglanti, kullanici_adi, ad_soyad, parola, Rol.ECZACI)
-    assert not aktif_kullanici_var_mi(baglanti)
+        kullanici_olustur(uygulama_baglanti, kullanici_adi, ad_soyad, parola, Rol.ECZACI)
+    assert not aktif_kullanici_var_mi(uygulama_baglanti)

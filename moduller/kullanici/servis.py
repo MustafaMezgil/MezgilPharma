@@ -1,11 +1,12 @@
 """Kullanici olusturma ve giris dogrulama."""
 
-import sqlite3
 from dataclasses import dataclass
-from datetime import datetime
 from enum import Enum
 
+import psycopg
+
 from moduller.kullanici.parola import parola_dogru_mu, parola_ozetle
+from veritabani.baglanti import Baglanti
 
 ASGARI_PAROLA_UZUNLUGU = 8
 
@@ -31,15 +32,13 @@ class Kullanici:
     rol: Rol
 
 
-def aktif_kullanici_var_mi(baglanti: sqlite3.Connection) -> bool:
-    satir = baglanti.execute(
-        "SELECT 1 FROM kullanicilar WHERE aktif = ? LIMIT 1", (1,)
-    ).fetchone()
+def aktif_kullanici_var_mi(baglanti: Baglanti) -> bool:
+    satir = baglanti.execute("SELECT 1 FROM kullanicilar WHERE aktif LIMIT 1").fetchone()
     return satir is not None
 
 
 def kullanici_olustur(
-    baglanti: sqlite3.Connection,
+    baglanti: Baglanti,
     kullanici_adi: str,
     ad_soyad: str,
     parola: str,
@@ -57,31 +56,23 @@ def kullanici_olustur(
         )
 
     try:
-        with baglanti:
-            baglanti.execute(
-                "INSERT INTO kullanicilar "
-                "(kullanici_adi, ad_soyad, parola_ozeti, rol, olusturma_tarihi) "
-                "VALUES (?, ?, ?, ?, ?)",
-                (
-                    kullanici_adi,
-                    ad_soyad,
-                    parola_ozetle(parola),
-                    rol.value,
-                    datetime.now().isoformat(timespec="seconds"),
-                ),
-            )
-    except sqlite3.IntegrityError as hata:
+        baglanti.execute(
+            "INSERT INTO kullanicilar (kullanici_adi, ad_soyad, parola_ozeti, rol) "
+            "VALUES (%s, %s, %s, %s)",
+            (kullanici_adi, ad_soyad, parola_ozetle(parola), rol.value),
+        )
+    except psycopg.errors.UniqueViolation as hata:
         raise KullaniciHatasi("Bu kullanıcı adı zaten kullanılıyor.") from hata
 
 
 def giris_dogrula(
-    baglanti: sqlite3.Connection, kullanici_adi: str, parola: str
+    baglanti: Baglanti, kullanici_adi: str, parola: str
 ) -> Kullanici | None:
     """Bilgiler dogruysa kullaniciyi, degilse None dondurur."""
     satir = baglanti.execute(
         "SELECT id, kullanici_adi, ad_soyad, rol, parola_ozeti FROM kullanicilar "
-        "WHERE kullanici_adi = ? AND aktif = ?",
-        (kullanici_adi.strip(), 1),
+        "WHERE kullanici_adi = %s AND aktif",
+        (kullanici_adi.strip(),),
     ).fetchone()
     if satir is None or not parola_dogru_mu(parola, satir["parola_ozeti"]):
         return None

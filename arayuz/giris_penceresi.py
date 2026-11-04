@@ -1,8 +1,8 @@
 """Kullanici giris penceresi ve ilk acilista eczaci hesabi olusturma penceresi."""
 
 import logging
-import sqlite3
 
+import psycopg
 from PyQt6.QtWidgets import (
     QDialog,
     QFormLayout,
@@ -13,6 +13,7 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from ayarlar import VeritabaniAyari
 from moduller.kullanici.servis import (
     Kullanici,
     KullaniciHatasi,
@@ -20,10 +21,11 @@ from moduller.kullanici.servis import (
     giris_dogrula,
     kullanici_olustur,
 )
+from veritabani.baglanti import baglanti_ac
 
 _log = logging.getLogger(__name__)
 
-_VERITABANI_HATA_MESAJI = "Veritabanına ulaşılamadı. Lütfen tekrar deneyin."
+_VERITABANI_HATA_MESAJI = "Ana makineye ulaşılamadı. Lütfen tekrar deneyin."
 
 
 def _parola_alani_olustur() -> QLineEdit:
@@ -40,9 +42,9 @@ def _hata_etiketi_olustur() -> QLabel:
 
 
 class GirisPenceresi(QDialog):
-    def __init__(self, baglanti: sqlite3.Connection) -> None:
+    def __init__(self, veritabani_ayari: VeritabaniAyari) -> None:
         super().__init__()
-        self._baglanti = baglanti
+        self.veritabani_ayari = veritabani_ayari
         self.kullanici: Kullanici | None = None
         self.setWindowTitle("MezgilPharma - Giriş")
 
@@ -71,12 +73,14 @@ class GirisPenceresi(QDialog):
 
     def _giris_yap(self) -> None:
         try:
-            kullanici = giris_dogrula(
-                self._baglanti,
-                self.kullanici_adi_alani.text(),
-                self.parola_alani.text(),
-            )
-        except sqlite3.Error:
+            # Her denemede yeni baglanti: ag kopup geri gelince tekrar denenebilsin.
+            with baglanti_ac(self.veritabani_ayari) as baglanti:
+                kullanici = giris_dogrula(
+                    baglanti,
+                    self.kullanici_adi_alani.text(),
+                    self.parola_alani.text(),
+                )
+        except psycopg.Error:
             _log.exception("Giris sirasinda veritabani hatasi")
             self.hata_etiketi.setText(_VERITABANI_HATA_MESAJI)
             return
@@ -95,9 +99,9 @@ class GirisPenceresi(QDialog):
 
 
 class IlkKullaniciPenceresi(QDialog):
-    def __init__(self, baglanti: sqlite3.Connection) -> None:
+    def __init__(self, veritabani_ayari: VeritabaniAyari) -> None:
         super().__init__()
-        self._baglanti = baglanti
+        self._veritabani_ayari = veritabani_ayari
         self.setWindowTitle("MezgilPharma - İlk Kurulum")
 
         aciklama = QLabel(
@@ -138,17 +142,18 @@ class IlkKullaniciPenceresi(QDialog):
             self.hata_etiketi.setText("Parolalar aynı değil.")
             return
         try:
-            kullanici_olustur(
-                self._baglanti,
-                self.kullanici_adi_alani.text(),
-                self.ad_soyad_alani.text(),
-                self.parola_alani.text(),
-                Rol.ECZACI,
-            )
+            with baglanti_ac(self._veritabani_ayari) as baglanti:
+                kullanici_olustur(
+                    baglanti,
+                    self.kullanici_adi_alani.text(),
+                    self.ad_soyad_alani.text(),
+                    self.parola_alani.text(),
+                    Rol.ECZACI,
+                )
         except KullaniciHatasi as hata:
             self.hata_etiketi.setText(str(hata))
             return
-        except sqlite3.Error:
+        except psycopg.Error:
             _log.exception("Ilk kullanici olusturulurken veritabani hatasi")
             self.hata_etiketi.setText(_VERITABANI_HATA_MESAJI)
             return
