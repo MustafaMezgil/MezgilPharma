@@ -186,7 +186,17 @@ Aynı işi yapan ikinci bir dosya/fonksiyon oluşturma. Önce mevcut kodda ara.
 13. Yazar kasa (ÖKC) ve e-fatura/e-arşiv
 14. Mobil/web panel (yalnızca özet: ciro, kritik stok, miat; hasta verisi yok)
 
-Şu an üzerinde çalışılan adım: **1**
+Şu an üzerinde çalışılan adım: **2**
+
+### Satış ekranı (4. adım) başlarken ele alınacaklar
+
+Bu iki konu kullanıcı yönetimi yapılırken bilerek ertelendi; satış ekranının planına eklenecek:
+
+- **Açık oturumlar:** Pasif yapılan ya da parolası sıfırlanan kişinin açık programı kapanmıyor.
+  Şu an yalnızca eczacı işlemleri (Kullanıcılar ekranı) yetkiyi veritabanından denetleyip reddediyor.
+  Satış ve stok ekranlarında bu kişinin nasıl durdurulacağı belirlenecek.
+- **Rol kısıtları:** Eczacı ve personel rollerinin stok ve satışta neyi yapıp yapamayacağı
+  henüz belirlenmedi. Bu ekranlar gelince birlikte karar verilecek.
 
 ---
 
@@ -200,3 +210,4 @@ Bu maddeler tamamlanmadan program gerçek bir eczanede, gerçek veriyle kullanı
 - [ ] Günlük otomatik yedek ve yedeğin başka yere kopyalanması
 - [ ] Disk şifreleme (BitLocker)
 - [ ] Bağlantı beklemesinin arka plana alınması
+- [ ] Parola kurtarma komutunun paketlemede kolaylaştırılması (şu an `.venv` ve komut satırı gerektiriyor)
