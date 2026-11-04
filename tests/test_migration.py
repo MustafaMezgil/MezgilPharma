@@ -8,6 +8,7 @@ import pytest
 from ayarlar import VeritabaniAyari
 from veritabani.baglanti import Baglanti, baglanti_ac
 from veritabani.migration import (
+    MIGRATIONS_KLASORU,
     MigrationHatasi,
     guncel_surum,
     migrationlari_uygula,
@@ -48,6 +49,33 @@ def _tablo_var_mi(baglanti: Baglanti, ad: str) -> bool:
     satir = baglanti.execute("SELECT to_regclass(%s) AS tablo", (ad,)).fetchone()
     assert satir is not None
     return satir["tablo"] is not None
+
+
+def test_002_mevcut_kullanicilari_bozmaz(sahip_baglanti: Baglanti, klasor: Path) -> None:
+    """Eski surumden gelen hesap kilitsiz kalir, parola degistirmeye zorlanmaz."""
+    (klasor / "001_ilk_sema.sql").write_bytes(
+        (MIGRATIONS_KLASORU / "001_ilk_sema.sql").read_bytes()
+    )
+    migrationlari_uygula(sahip_baglanti, yedek_al=lambda _s: None, klasor=klasor)
+    sahip_baglanti.execute(
+        "INSERT INTO kullanicilar (kullanici_adi, ad_soyad, parola_ozeti) VALUES (%s, %s, %s)",
+        ("eski", "Eski Kişi", "ozet"),
+    )
+    (klasor / "002_kullanici_guvenligi.sql").write_bytes(
+        (MIGRATIONS_KLASORU / "002_kullanici_guvenligi.sql").read_bytes()
+    )
+
+    migrationlari_uygula(sahip_baglanti, yedek_al=lambda _s: None, klasor=klasor)
+
+    satir = sahip_baglanti.execute(
+        "SELECT hatali_giris_sayisi, kilit_bitis, parola_degismeli, parola_ozeti "
+        "FROM kullanicilar"
+    ).fetchone()
+    assert satir is not None
+    assert satir["hatali_giris_sayisi"] == 0
+    assert satir["kilit_bitis"] is None
+    assert satir["parola_degismeli"] is False
+    assert satir["parola_ozeti"] == "ozet"
 
 
 def test_bos_veritabaninin_surumu_sifirdir(sahip_baglanti: Baglanti) -> None:

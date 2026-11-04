@@ -15,6 +15,7 @@ from PyQt6.QtWidgets import (
 
 from ayarlar import VeritabaniAyari
 from moduller.kullanici.servis import (
+    HesapKilitliHatasi,
     Kullanici,
     KullaniciHatasi,
     Rol,
@@ -25,16 +26,17 @@ from veritabani.baglanti import baglanti_ac
 
 _log = logging.getLogger(__name__)
 
-_VERITABANI_HATA_MESAJI = "Ana makineye ulaşılamadı. Lütfen tekrar deneyin."
+VERITABANI_HATA_MESAJI = "Ana makineye ulaşılamadı. Lütfen tekrar deneyin."
+PAROLALAR_AYNI_DEGIL_MESAJI = "Parolalar aynı değil."
 
 
-def _parola_alani_olustur() -> QLineEdit:
+def parola_alani_olustur() -> QLineEdit:
     alan = QLineEdit()
     alan.setEchoMode(QLineEdit.EchoMode.Password)
     return alan
 
 
-def _hata_etiketi_olustur() -> QLabel:
+def hata_etiketi_olustur() -> QLabel:
     etiket = QLabel()
     etiket.setStyleSheet("color: #b00020;")
     etiket.setWordWrap(True)
@@ -49,8 +51,8 @@ class GirisPenceresi(QDialog):
         self.setWindowTitle("MezgilPharma - Giriş")
 
         self.kullanici_adi_alani = QLineEdit()
-        self.parola_alani = _parola_alani_olustur()
-        self.hata_etiketi = _hata_etiketi_olustur()
+        self.parola_alani = parola_alani_olustur()
+        self.hata_etiketi = hata_etiketi_olustur()
         self.giris_dugmesi = QPushButton("Giriş Yap")
         self.giris_dugmesi.setDefault(True)
         cikis_dugmesi = QPushButton("Çıkış")
@@ -80,9 +82,13 @@ class GirisPenceresi(QDialog):
                     self.kullanici_adi_alani.text(),
                     self.parola_alani.text(),
                 )
+        except HesapKilitliHatasi as hata:
+            self.hata_etiketi.setText(str(hata))
+            self.parola_alani.clear()
+            return
         except psycopg.Error:
             _log.exception("Giris sirasinda veritabani hatasi")
-            self.hata_etiketi.setText(_VERITABANI_HATA_MESAJI)
+            self.hata_etiketi.setText(VERITABANI_HATA_MESAJI)
             return
 
         if kullanici is None:
@@ -104,16 +110,16 @@ class IlkKullaniciPenceresi(QDialog):
         self._veritabani_ayari = veritabani_ayari
         self.setWindowTitle("MezgilPharma - İlk Kurulum")
 
-        aciklama = QLabel(
+        self.aciklama_etiketi = QLabel(
             "Programda henüz kullanıcı yok. Lütfen eczacı hesabını oluşturun.\n"
-            "Parolayı unutmayın: şu an parola sıfırlama özelliği yoktur."
+            "Parolayı unutmayın: unutursanız ana makinede kurtarma komutu çalıştırmak gerekir."
         )
-        aciklama.setWordWrap(True)
+        self.aciklama_etiketi.setWordWrap(True)
         self.ad_soyad_alani = QLineEdit()
         self.kullanici_adi_alani = QLineEdit()
-        self.parola_alani = _parola_alani_olustur()
-        self.parola_tekrar_alani = _parola_alani_olustur()
-        self.hata_etiketi = _hata_etiketi_olustur()
+        self.parola_alani = parola_alani_olustur()
+        self.parola_tekrar_alani = parola_alani_olustur()
+        self.hata_etiketi = hata_etiketi_olustur()
         self.kaydet_dugmesi = QPushButton("Hesabı Oluştur")
         self.kaydet_dugmesi.setDefault(True)
         cikis_dugmesi = QPushButton("Çıkış")
@@ -129,7 +135,7 @@ class IlkKullaniciPenceresi(QDialog):
         dugmeler.addWidget(cikis_dugmesi)
         dugmeler.addWidget(self.kaydet_dugmesi)
         duzen = QVBoxLayout(self)
-        duzen.addWidget(aciklama)
+        duzen.addWidget(self.aciklama_etiketi)
         duzen.addLayout(form)
         duzen.addWidget(self.hata_etiketi)
         duzen.addLayout(dugmeler)
@@ -139,7 +145,7 @@ class IlkKullaniciPenceresi(QDialog):
 
     def _kaydet(self) -> None:
         if self.parola_alani.text() != self.parola_tekrar_alani.text():
-            self.hata_etiketi.setText("Parolalar aynı değil.")
+            self.hata_etiketi.setText(PAROLALAR_AYNI_DEGIL_MESAJI)
             return
         try:
             with baglanti_ac(self._veritabani_ayari) as baglanti:
@@ -155,6 +161,6 @@ class IlkKullaniciPenceresi(QDialog):
             return
         except psycopg.Error:
             _log.exception("Ilk kullanici olusturulurken veritabani hatasi")
-            self.hata_etiketi.setText(_VERITABANI_HATA_MESAJI)
+            self.hata_etiketi.setText(VERITABANI_HATA_MESAJI)
             return
         self.accept()

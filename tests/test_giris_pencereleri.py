@@ -5,7 +5,12 @@ from PyQt6.QtWidgets import QDialog, QLineEdit
 
 from arayuz.giris_penceresi import GirisPenceresi, IlkKullaniciPenceresi
 from ayarlar import VeritabaniAyari
-from moduller.kullanici.servis import Rol, giris_dogrula, kullanici_olustur
+from moduller.kullanici.servis import (
+    AZAMI_HATALI_GIRIS,
+    Rol,
+    giris_dogrula,
+    kullanici_olustur,
+)
 from veritabani.baglanti import Baglanti
 
 PAROLA = "Deneme-Parola1"
@@ -46,6 +51,46 @@ def test_yanlis_parolada_uyari_verilir_ve_parola_temizlenir(
     assert pencere.result() != QDialog.DialogCode.Accepted
     assert pencere.hata_etiketi.text() == "Kullanıcı adı veya parola hatalı."
     assert pencere.parola_alani.text() == ""
+
+
+@pytest.mark.usefixtures("kayitli_baglanti")
+def test_besinci_yanlis_denemede_kilit_mesaji_gosterilir(
+    uygulama_ayari: VeritabaniAyari,
+) -> None:
+    pencere = GirisPenceresi(uygulama_ayari)
+    pencere.kullanici_adi_alani.setText("test_eczaci")
+    for _ in range(AZAMI_HATALI_GIRIS):
+        pencere.parola_alani.setText("yanlis-parola")
+        pencere.giris_dugmesi.click()
+
+    assert pencere.kullanici is None
+    assert "15 dakika" in pencere.hata_etiketi.text()
+    assert pencere.parola_alani.text() == ""
+
+
+@pytest.mark.usefixtures("kayitli_baglanti")
+def test_kilitliyken_dogru_parola_ile_giris_yapilamaz(
+    uygulama_ayari: VeritabaniAyari,
+) -> None:
+    pencere = GirisPenceresi(uygulama_ayari)
+    pencere.kullanici_adi_alani.setText("test_eczaci")
+    for _ in range(AZAMI_HATALI_GIRIS):
+        pencere.parola_alani.setText("yanlis-parola")
+        pencere.giris_dugmesi.click()
+
+    pencere.parola_alani.setText(PAROLA)
+    pencere.giris_dugmesi.click()
+
+    assert pencere.kullanici is None
+    assert pencere.result() != QDialog.DialogCode.Accepted
+    assert "tekrar deneyin" in pencere.hata_etiketi.text()
+
+
+def test_ilk_kurulum_kurtarma_komutundan_soz_eder(uygulama_ayari: VeritabaniAyari) -> None:
+    pencere = IlkKullaniciPenceresi(uygulama_ayari)
+    metin = pencere.aciklama_etiketi.text()
+    assert "kurtarma" in metin
+    assert "sıfırlama özelliği yoktur" not in metin
 
 
 def test_parola_alani_yazilani_gizler(uygulama_ayari: VeritabaniAyari) -> None:

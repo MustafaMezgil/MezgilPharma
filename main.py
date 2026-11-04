@@ -2,12 +2,14 @@
 
 import logging
 import sys
+from dataclasses import replace
 
 import psycopg
 from PyQt6.QtWidgets import QApplication, QDialog, QMessageBox
 
 from arayuz.ana_pencere import AnaPencere
 from arayuz.giris_penceresi import GirisPenceresi, IlkKullaniciPenceresi
+from arayuz.kullanici_penceresi import ParolaDegistirPenceresi
 from ayarlar import AyarHatasi, Ayarlar, ayarlari_yukle
 from gunluk import gunlugu_baslat
 from moduller.kullanici.servis import Kullanici, aktif_kullanici_var_mi
@@ -39,7 +41,13 @@ def kullanici_girisi(ayarlar: Ayarlar) -> Kullanici | None:
             return None
     giris = GirisPenceresi(ayarlar.veritabani)
     giris.exec()
-    return giris.kullanici
+    kullanici = giris.kullanici
+    if kullanici is None or not kullanici.parola_degismeli:
+        return kullanici
+    degistirme = ParolaDegistirPenceresi(ayarlar.veritabani, kullanici, zorunlu=True)
+    if degistirme.exec() != QDialog.DialogCode.Accepted:
+        return None
+    return replace(kullanici, parola_degismeli=False)
 
 
 def baslat(ayarlar: Ayarlar) -> int:
@@ -61,7 +69,7 @@ def baslat(ayarlar: Ayarlar) -> int:
     if kullanici is None:
         return 0
 
-    pencere = AnaPencere(ayarlar.ortam, surum, kullanici)
+    pencere = AnaPencere(ayarlar.ortam, surum, kullanici, ayarlar.veritabani)
     pencere.show()
     return uygulama.exec()
 

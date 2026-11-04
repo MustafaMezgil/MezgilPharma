@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import replace
 from pathlib import Path
 
@@ -6,11 +7,18 @@ from PyQt6.QtWidgets import QDialog, QMessageBox, QWidget
 
 import main
 from arayuz.giris_penceresi import GirisPenceresi, IlkKullaniciPenceresi
+from arayuz.kullanici_penceresi import ParolaDegistirPenceresi
 from ayarlar import AyarHatasi, Ayarlar, Ortam, VeritabaniAyari
-from moduller.kullanici.servis import Rol, kullanici_olustur
+from moduller.kullanici.servis import (
+    Rol,
+    giris_dogrula,
+    kullanici_olustur,
+    personel_ekle,
+)
 from veritabani.baglanti import Baglanti
 
 PAROLA = "Deneme-Parola1"
+GECICI = "Gecici-Parola1"
 
 
 @pytest.fixture
@@ -110,6 +118,73 @@ def test_kullanici_varsa_dogrudan_giris_ekrani_acilir(
 
     assert kullanici is not None
     assert kullanici.kullanici_adi == "test_eczaci"
+
+
+def _girisi_doldur(kullanici_adi: str, parola: str) -> Callable[[GirisPenceresi], int]:
+    def _giris(pencere: GirisPenceresi) -> int:
+        pencere.kullanici_adi_alani.setText(kullanici_adi)
+        pencere.parola_alani.setText(parola)
+        pencere.giris_dugmesi.click()
+        return pencere.result()
+
+    return _giris
+
+
+@pytest.mark.usefixtures("qt_uygulamasi", "kayitli_kullanici")
+def test_parola_degistirme_zorunlu_degilse_pencere_acilmaz(
+    ayarlar: Ayarlar, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _acilmamali(_pencere: ParolaDegistirPenceresi) -> int:
+        pytest.fail("Parola degistirme penceresi acilmamaliydi")
+
+    monkeypatch.setattr(GirisPenceresi, "exec", _girisi_doldur("test_eczaci", PAROLA))
+    monkeypatch.setattr(ParolaDegistirPenceresi, "exec", _acilmamali)
+
+    assert main.kullanici_girisi(ayarlar) is not None
+
+
+@pytest.fixture
+def gecici_parolali(uygulama_baglanti: Baglanti) -> None:
+    kullanici_olustur(uygulama_baglanti, "test_eczaci", "Test Kişi", PAROLA, Rol.ECZACI)
+    eczaci = giris_dogrula(uygulama_baglanti, "test_eczaci", PAROLA)
+    assert eczaci is not None
+    personel_ekle(uygulama_baglanti, eczaci, "yeni", "Yeni Kişi", GECICI, Rol.PERSONEL)
+
+
+@pytest.mark.usefixtures("qt_uygulamasi", "gecici_parolali")
+def test_gecici_parola_degistirilmeden_programa_girilemez(
+    ayarlar: Ayarlar, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def _vazgec(pencere: ParolaDegistirPenceresi) -> int:
+        assert pencere.zorunlu
+        return QDialog.DialogCode.Rejected.value
+
+    monkeypatch.setattr(GirisPenceresi, "exec", _girisi_doldur("yeni", GECICI))
+    monkeypatch.setattr(ParolaDegistirPenceresi, "exec", _vazgec)
+
+    assert main.kullanici_girisi(ayarlar) is None
+
+
+@pytest.mark.usefixtures("qt_uygulamasi", "gecici_parolali")
+def test_gecici_parola_degistirilince_programa_girilir(
+    ayarlar: Ayarlar, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    yeni_parola = "Yeni-Parola-123"
+
+    def _degistir(pencere: ParolaDegistirPenceresi) -> int:
+        pencere.mevcut_parola_alani.setText(GECICI)
+        pencere.yeni_parola_alani.setText(yeni_parola)
+        pencere.yeni_parola_tekrar_alani.setText(yeni_parola)
+        pencere.kaydet_dugmesi.click()
+        return pencere.result()
+
+    monkeypatch.setattr(GirisPenceresi, "exec", _girisi_doldur("yeni", GECICI))
+    monkeypatch.setattr(ParolaDegistirPenceresi, "exec", _degistir)
+
+    kullanici = main.kullanici_girisi(ayarlar)
+
+    assert kullanici is not None
+    assert not kullanici.parola_degismeli
 
 
 @pytest.mark.usefixtures("qt_uygulamasi", "temiz_gunluk", "kayitli_kullanici")
