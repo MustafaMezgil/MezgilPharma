@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QLabel
 
 from arayuz.ana_pencere import AnaPencere
 from arayuz.kullanici_penceresi import KullanicilarPenceresi, ParolaDegistirPenceresi
+from arayuz.urun_penceresi import UrunlerPenceresi
 from ayarlar import Ortam, VeritabaniAyari
 from moduller.kullanici.servis import Kullanici, Rol
 
@@ -58,6 +59,26 @@ def test_personel_kullanicilar_menusunu_goremez_ama_parolasini_degistirebilir() 
     pencere = AnaPencere(Ortam.TEST, 1, kullanici, AYAR)
     assert pencere.kullanicilar_eylemi is None
     assert pencere.parola_degistir_eylemi.isEnabled()
+
+
+@pytest.mark.usefixtures("qt_uygulamasi")
+@pytest.mark.parametrize("rol", [Rol.ECZACI, Rol.PERSONEL])
+def test_urunler_menusu_her_iki_role_de_acilir(
+    monkeypatch: pytest.MonkeyPatch, rol: Rol
+) -> None:
+    acilan: list[int] = []
+
+    def _exec(_pencere: UrunlerPenceresi) -> int:
+        acilan.append(1)
+        return 0
+
+    monkeypatch.setattr(UrunlerPenceresi, "exec", _exec)
+    kullanici = Kullanici(id=1, kullanici_adi="test", ad_soyad="Test Kişi", rol=rol)
+    pencere = AnaPencere(Ortam.TEST, 1, kullanici, AYAR)
+
+    pencere.urunler_eylemi.trigger()
+
+    assert acilan == [1]
 
 
 @pytest.mark.usefixtures("qt_uygulamasi")

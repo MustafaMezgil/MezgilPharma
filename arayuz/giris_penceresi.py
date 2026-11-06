@@ -13,6 +13,12 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
+from arayuz.ortak import (
+    PAROLALAR_AYNI_DEGIL_MESAJI,
+    VERITABANI_HATA_MESAJI,
+    hata_etiketi_olustur,
+    parola_alani_olustur,
+)
 from ayarlar import VeritabaniAyari
 from moduller.kullanici.servis import (
     HesapKilitliHatasi,
@@ -25,22 +31,6 @@ from moduller.kullanici.servis import (
 from veritabani.baglanti import baglanti_ac
 
 _log = logging.getLogger(__name__)
-
-VERITABANI_HATA_MESAJI = "Ana makineye ulaşılamadı. Lütfen tekrar deneyin."
-PAROLALAR_AYNI_DEGIL_MESAJI = "Parolalar aynı değil."
-
-
-def parola_alani_olustur() -> QLineEdit:
-    alan = QLineEdit()
-    alan.setEchoMode(QLineEdit.EchoMode.Password)
-    return alan
-
-
-def hata_etiketi_olustur() -> QLabel:
-    etiket = QLabel()
-    etiket.setStyleSheet("color: #b00020;")
-    etiket.setWordWrap(True)
-    return etiket
 
 
 class GirisPenceresi(QDialog):

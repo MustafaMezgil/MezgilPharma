@@ -4,6 +4,7 @@ from PyQt6.QtGui import QAction
 from PyQt6.QtWidgets import QLabel, QMainWindow, QMenu, QMenuBar, QVBoxLayout, QWidget
 
 from arayuz.kullanici_penceresi import KullanicilarPenceresi, ParolaDegistirPenceresi
+from arayuz.urun_penceresi import UrunlerPenceresi
 from ayarlar import Ortam, VeritabaniAyari
 from moduller.kullanici.servis import Kullanici, Rol
 
@@ -51,9 +52,18 @@ class AnaPencere(QMainWindow):
             self.kullanicilar_eylemi.triggered.connect(self._kullanicilar)
             menu.addAction(self.kullanicilar_eylemi)
 
+        stok_menusu = QMenu("Stok", self)
+        self.urunler_eylemi = QAction("Ürünler", self)
+        self.urunler_eylemi.triggered.connect(self._urunler)
+        stok_menusu.addAction(self.urunler_eylemi)
+
         cubuk = QMenuBar(self)
+        cubuk.addMenu(stok_menusu)
         cubuk.addMenu(menu)
         self.setMenuBar(cubuk)
+
+    def _urunler(self) -> None:
+        UrunlerPenceresi(self._veritabani_ayari, self._kullanici).exec()
 
     def _parola_degistir(self) -> None:
         ParolaDegistirPenceresi(self._veritabani_ayari, self._kullanici).exec()

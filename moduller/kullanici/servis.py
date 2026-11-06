@@ -7,6 +7,7 @@ from enum import Enum
 import psycopg
 from psycopg.rows import DictRow
 
+from moduller.hatalar import GorunurHata
 from moduller.kullanici.parola import parola_dogru_mu, parola_ozetle
 from veritabani.baglanti import Baglanti
 
@@ -20,7 +21,7 @@ _BULUNAMADI_MESAJI = "Kullanıcı bulunamadı veya pasif."
 _log = logging.getLogger(__name__)
 
 
-class KullaniciHatasi(Exception):
+class KullaniciHatasi(GorunurHata):
     """Mesaji kullaniciya gosterilebilecek, Turkce bir kullanici hatasi."""
 
 
@@ -187,13 +188,18 @@ def gecici_parola_yaz(baglanti: Baglanti, kullanici_id: int, parola: str) -> boo
     return satir is not None
 
 
-def _eczaci_dogrula(baglanti: Baglanti, yapan: Kullanici) -> None:
-    """Yetkiyi her islemde veritabanindan okur: program acikken degismis olabilir."""
+def aktif_rol_getir(baglanti: Baglanti, yapan: Kullanici) -> Rol:
+    """Rolu her islemde veritabanindan okur: program acikken degismis olabilir."""
     satir = baglanti.execute(
-        "SELECT 1 FROM kullanicilar WHERE id = %s AND aktif AND rol = %s FOR SHARE",
-        (yapan.id, Rol.ECZACI.value),
+        "SELECT rol FROM kullanicilar WHERE id = %s AND aktif FOR SHARE", (yapan.id,)
     ).fetchone()
     if satir is None:
+        raise YetkiHatasi("Hesabınız artık aktif değil.")
+    return Rol(satir["rol"])
+
+
+def eczaci_dogrula(baglanti: Baglanti, yapan: Kullanici) -> None:
+    if aktif_rol_getir(baglanti, yapan) is not Rol.ECZACI:
         raise YetkiHatasi("Bu işlem için eczacı yetkisi gerekir.")
 
 
@@ -207,7 +213,7 @@ def personel_ekle(
 ) -> int:
     """Eczaci yeni hesap acar. Kisi ilk giriste kendi parolasini belirler."""
     with baglanti.transaction():
-        _eczaci_dogrula(baglanti, yapan)
+        eczaci_dogrula(baglanti, yapan)
         yeni_id = kullanici_olustur(
             baglanti, kullanici_adi, ad_soyad, gecici_parola, rol, parola_degismeli=True
         )
@@ -219,7 +225,7 @@ def parola_sifirla(
     baglanti: Baglanti, yapan: Kullanici, hedef_id: int, gecici_parola: str
 ) -> None:
     with baglanti.transaction():
-        _eczaci_dogrula(baglanti, yapan)
+        eczaci_dogrula(baglanti, yapan)
         if hedef_id == yapan.id:
             raise KullaniciHatasi(
                 "Kendi parolanızı \"Parolamı Değiştir\" menüsünden değiştirin."
@@ -232,7 +238,7 @@ def parola_sifirla(
 
 def kilit_ac(baglanti: Baglanti, yapan: Kullanici, hedef_id: int) -> None:
     with baglanti.transaction():
-        _eczaci_dogrula(baglanti, yapan)
+        eczaci_dogrula(baglanti, yapan)
         satir = baglanti.execute(
             "UPDATE kullanicilar SET hatali_giris_sayisi = 0, kilit_bitis = NULL "
             "WHERE id = %s AND aktif RETURNING id",
@@ -288,7 +294,7 @@ def pasif_yap(baglanti: Baglanti, yapan: Kullanici, hedef_id: int) -> None:
 
 def aktif_yap(baglanti: Baglanti, yapan: Kullanici, hedef_id: int) -> None:
     with baglanti.transaction():
-        _eczaci_dogrula(baglanti, yapan)
+        eczaci_dogrula(baglanti, yapan)
         satir = baglanti.execute(
             "UPDATE kullanicilar SET aktif = TRUE, hatali_giris_sayisi = 0, "
             "kilit_bitis = NULL WHERE id = %s AND NOT aktif RETURNING id",
@@ -301,7 +307,7 @@ def aktif_yap(baglanti: Baglanti, yapan: Kullanici, hedef_id: int) -> None:
 
 def kullanicilari_listele(baglanti: Baglanti, yapan: Kullanici) -> list[KullaniciOzeti]:
     with baglanti.transaction():
-        _eczaci_dogrula(baglanti, yapan)
+        eczaci_dogrula(baglanti, yapan)
         satirlar = baglanti.execute(
             "SELECT id, kullanici_adi, ad_soyad, rol, aktif, "
             "COALESCE(kilit_bitis > now(), FALSE) AS kilitli "

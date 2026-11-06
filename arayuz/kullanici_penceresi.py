@@ -1,9 +1,5 @@
 """Parola degistirme penceresi ve eczacinin kullanici yonetimi ekranlari."""
 
-import logging
-from collections.abc import Callable
-
-import psycopg
 from PyQt6.QtWidgets import (
     QComboBox,
     QDialog,
@@ -18,16 +14,16 @@ from PyQt6.QtWidgets import (
     QVBoxLayout,
 )
 
-from arayuz.giris_penceresi import (
+from arayuz.ortak import (
     PAROLALAR_AYNI_DEGIL_MESAJI,
-    VERITABANI_HATA_MESAJI,
+    dugmeler_olustur,
     hata_etiketi_olustur,
+    islemi_calistir,
     parola_alani_olustur,
 )
 from ayarlar import VeritabaniAyari
 from moduller.kullanici.servis import (
     Kullanici,
-    KullaniciHatasi,
     KullaniciOzeti,
     Rol,
     aktif_yap,
@@ -38,38 +34,9 @@ from moduller.kullanici.servis import (
     pasif_yap,
     personel_ekle,
 )
-from veritabani.baglanti import Baglanti, baglanti_ac
-
-_log = logging.getLogger(__name__)
+from veritabani.baglanti import Baglanti
 
 _SUTUNLAR = ("Ad soyad", "Kullanıcı adı", "Rol", "Durum")
-
-
-def _islemi_calistir(
-    ayar: VeritabaniAyari, hata_etiketi: QLabel, islem: Callable[[Baglanti], object]
-) -> bool:
-    """Veritabani islemini yapar; hatayi etikette Turkce gosterir, teknik ayrinti loga gider."""
-    try:
-        with baglanti_ac(ayar) as baglanti:
-            islem(baglanti)
-    except KullaniciHatasi as hata:
-        hata_etiketi.setText(str(hata))
-        return False
-    except psycopg.Error:
-        _log.exception("Kullanici isleminde veritabani hatasi")
-        hata_etiketi.setText(VERITABANI_HATA_MESAJI)
-        return False
-    return True
-
-
-def _dugmeler_olustur(iptal: QPushButton, kaydet: QPushButton) -> QHBoxLayout:
-    kaydet.setDefault(True)
-    iptal.setAutoDefault(False)
-    dugmeler = QHBoxLayout()
-    dugmeler.addStretch()
-    dugmeler.addWidget(iptal)
-    dugmeler.addWidget(kaydet)
-    return dugmeler
 
 
 class ParolaDegistirPenceresi(QDialog):
@@ -106,7 +73,7 @@ class ParolaDegistirPenceresi(QDialog):
         duzen.addWidget(self.aciklama_etiketi)
         duzen.addLayout(form)
         duzen.addWidget(self.hata_etiketi)
-        duzen.addLayout(_dugmeler_olustur(iptal_dugmesi, self.kaydet_dugmesi))
+        duzen.addLayout(dugmeler_olustur(iptal_dugmesi, self.kaydet_dugmesi))
 
         self.kaydet_dugmesi.clicked.connect(self._kaydet)
         iptal_dugmesi.clicked.connect(self.reject)
@@ -117,7 +84,7 @@ class ParolaDegistirPenceresi(QDialog):
             self.hata_etiketi.setText(PAROLALAR_AYNI_DEGIL_MESAJI)
             return
         mevcut = self.mevcut_parola_alani.text()
-        tamam = _islemi_calistir(
+        tamam = islemi_calistir(
             self._veritabani_ayari,
             self.hata_etiketi,
             lambda baglanti: parola_degistir(baglanti, self.kullanici, mevcut, yeni),
@@ -161,7 +128,7 @@ class KullaniciEklePenceresi(QDialog):
         duzen.addWidget(aciklama)
         duzen.addLayout(form)
         duzen.addWidget(self.hata_etiketi)
-        duzen.addLayout(_dugmeler_olustur(iptal_dugmesi, self.kaydet_dugmesi))
+        duzen.addLayout(dugmeler_olustur(iptal_dugmesi, self.kaydet_dugmesi))
 
         self.kaydet_dugmesi.clicked.connect(self._kaydet)
         iptal_dugmesi.clicked.connect(self.reject)
@@ -172,7 +139,7 @@ class KullaniciEklePenceresi(QDialog):
             self.hata_etiketi.setText(PAROLALAR_AYNI_DEGIL_MESAJI)
             return
         rol: Rol = self.rol_secimi.currentData()
-        tamam = _islemi_calistir(
+        tamam = islemi_calistir(
             self._veritabani_ayari,
             self.hata_etiketi,
             lambda baglanti: personel_ekle(
@@ -216,7 +183,7 @@ class ParolaSifirlaPenceresi(QDialog):
         duzen.addWidget(aciklama)
         duzen.addLayout(form)
         duzen.addWidget(self.hata_etiketi)
-        duzen.addLayout(_dugmeler_olustur(iptal_dugmesi, self.kaydet_dugmesi))
+        duzen.addLayout(dugmeler_olustur(iptal_dugmesi, self.kaydet_dugmesi))
 
         self.kaydet_dugmesi.clicked.connect(self._kaydet)
         iptal_dugmesi.clicked.connect(self.reject)
@@ -226,7 +193,7 @@ class ParolaSifirlaPenceresi(QDialog):
         if parola != self.parola_tekrar_alani.text():
             self.hata_etiketi.setText(PAROLALAR_AYNI_DEGIL_MESAJI)
             return
-        tamam = _islemi_calistir(
+        tamam = islemi_calistir(
             self._veritabani_ayari,
             self.hata_etiketi,
             lambda baglanti: parola_sifirla(baglanti, self._yapan, self.hedef.id, parola),
@@ -295,7 +262,7 @@ class KullanicilarPenceresi(QDialog):
         def _oku(baglanti: Baglanti) -> None:
             self._liste = kullanicilari_listele(baglanti, self._yapan)
 
-        if not _islemi_calistir(self._veritabani_ayari, self.hata_etiketi, _oku):
+        if not islemi_calistir(self._veritabani_ayari, self.hata_etiketi, _oku):
             return
         self.tablo.clearSelection()
         self.tablo.setRowCount(len(self._liste))
@@ -344,7 +311,7 @@ class KullanicilarPenceresi(QDialog):
         ozet = self._secileni_al()
         if ozet is None:
             return
-        if _islemi_calistir(
+        if islemi_calistir(
             self._veritabani_ayari,
             self.hata_etiketi,
             lambda baglanti: kilit_ac(baglanti, self._yapan, ozet.id),
@@ -358,7 +325,7 @@ class KullanicilarPenceresi(QDialog):
         if ozet.aktif and not self._pasif_onayi(ozet):
             return
         islem = pasif_yap if ozet.aktif else aktif_yap
-        if _islemi_calistir(
+        if islemi_calistir(
             self._veritabani_ayari,
             self.hata_etiketi,
             lambda baglanti: islem(baglanti, self._yapan, ozet.id),

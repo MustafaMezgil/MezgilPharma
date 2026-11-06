@@ -90,6 +90,23 @@ def test_erisim_kaydi_degistirilemez_ve_silinemez(
         uygulama_baglanti.execute(komut.encode("utf-8"))
 
 
+@pytest.mark.parametrize(
+    "komut",
+    [
+        "UPDATE fiyat_gecmisi SET stok_miktari = 0",
+        "DELETE FROM fiyat_gecmisi",
+        "TRUNCATE fiyat_gecmisi",
+        "DELETE FROM urunler",
+        "DELETE FROM stok_partileri",
+    ],
+)
+def test_fiyat_gecmisi_degistirilemez_urun_ve_parti_silinemez(
+    uygulama_baglanti: Baglanti, komut: str
+) -> None:
+    with pytest.raises(psycopg.errors.InsufficientPrivilege):
+        uygulama_baglanti.execute(komut.encode("utf-8"))
+
+
 def test_uygulama_hesabi_surum_kaydini_degistiremez(uygulama_baglanti: Baglanti) -> None:
     with pytest.raises(psycopg.errors.InsufficientPrivilege):
         uygulama_baglanti.execute("DELETE FROM schema_surum")

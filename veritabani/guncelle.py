@@ -86,6 +86,11 @@ def yetkileri_ver(baglanti: Baglanti, kullanici: str) -> None:
         "REVOKE INSERT, UPDATE, DELETE ON schema_surum FROM {}",
         # Erisim kayitlari denetim icindir: eklenir ve okunur, degistirilemez.
         "REVOKE UPDATE, DELETE ON erisim_log FROM {}",
+        # Fiyat gecmisi fiyat farki talebine dayanak olur: eklenir ve okunur, degistirilemez.
+        "REVOKE UPDATE, DELETE ON fiyat_gecmisi FROM {}",
+        # Urun ve parti silinmez: urun pasif yapilir, biten partinin miktari sifir kalir.
+        "REVOKE DELETE ON urunler FROM {}",
+        "REVOKE DELETE ON stok_partileri FROM {}",
     )
     with baglanti.transaction():
         for komut in komutlar:
