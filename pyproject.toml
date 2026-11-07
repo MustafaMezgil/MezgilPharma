@@ -1,6 +1,11 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+addopts = "--strict-markers"
+markers = [
+    "yavas: bağlantı kopması gibi uzun bekleyen testler. Günlük: pytest -m \"not yavas\"; commit öncesi: pytest",
+    "gercek_parola: parola özetleme gerçek (yavaş) ayarlarla çalışır",
+]
 
 [tool.pyright]
 include = ["main.py", "ayarlar.py", "gunluk.py", "veritabani", "moduller", "arayuz", "tests"]

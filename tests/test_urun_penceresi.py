@@ -246,6 +246,7 @@ def test_personel_duzenlemede_fiyati_bozmaz(
     assert guncel.psf == FIYAT.psf
 
 
+@pytest.mark.yavas
 def test_baglanti_yoksa_kart_ekranı_turkce_uyari_verir(
     uygulama_ayari: VeritabaniAyari, eczaci: Kullanici
 ) -> None:
@@ -430,6 +431,7 @@ def test_sonuc_siniri_asilinca_kullanici_uyarilir(
     assert "daraltın" in pencere.hata_etiketi.text()
 
 
+@pytest.mark.yavas
 def test_liste_baglanti_yoksa_program_dusmez(
     uygulama_ayari: VeritabaniAyari, eczaci: Kullanici
 ) -> None:

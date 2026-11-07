@@ -1,4 +1,12 @@
+import pytest
+
 from moduller.kullanici.parola import parola_dogru_mu, parola_ozetle
+
+pytestmark = pytest.mark.gercek_parola
+
+
+def test_gercek_ozet_guclu_ayarla_uretilir() -> None:
+    assert parola_ozetle("DenemeParola").startswith("scrypt$32768$8$1$")
 
 
 def test_dogru_parola_kabul_edilir() -> None:

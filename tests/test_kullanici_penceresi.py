@@ -125,6 +125,7 @@ def test_ekleme_penceresinde_parolalar_uyusmazsa_kayit_olmaz(
     assert giris_dogrula(uygulama_baglanti, "yeni", GECICI) is None
 
 
+@pytest.mark.yavas
 def test_ekleme_penceresi_baglanti_yoksa_turkce_uyari_verir(
     uygulama_ayari: VeritabaniAyari, eczaci: Kullanici
 ) -> None:
@@ -383,6 +384,7 @@ def test_sifirla_dugmesi_secili_kullanici_icin_pencere_acar(
     assert acilanlar == ["personel1"]
 
 
+@pytest.mark.yavas
 def test_liste_baglanti_yoksa_program_dusmez(
     uygulama_ayari: VeritabaniAyari, eczaci: Kullanici
 ) -> None:

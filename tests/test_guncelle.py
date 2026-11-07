@@ -134,6 +134,7 @@ def test_yedek_gercek_arac_ile_alinir_ve_veriyi_icerir(
     assert "erisim_log" in icindekiler
 
 
+@pytest.mark.yavas
 def test_yedek_alinamazsa_turkce_hata_verir_ve_dosya_birakmaz(
     sahip_ayari: VeritabaniAyari, yedek_klasoru: Path
 ) -> None:

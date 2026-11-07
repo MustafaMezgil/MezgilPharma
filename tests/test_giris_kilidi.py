@@ -112,6 +112,8 @@ def test_sayac_kasalar_arasinda_birikir(
             giris_dogrula(baska_kasa, ADI, YANLIS)
 
 
+# Gercek ozetleme suresi denemelerin gercekten ust uste binmesini saglar.
+@pytest.mark.gercek_parola
 def test_ayni_anda_yapilan_denemelerde_siniri_asan_parola_denenemez(
     baglanti: Baglanti, uygulama_ayari: VeritabaniAyari, monkeypatch: pytest.MonkeyPatch
 ) -> None:

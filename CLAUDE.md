@@ -133,7 +133,9 @@ Aynı işi yapan ikinci bir dosya/fonksiyon oluşturma. Önce mevcut kodda ara.
   (3. adımdaki karekod modülünün kaynağı):
   - Alan sırası 01 → 21 → GS → 17 → 10; grup ayracı (GS) ASCII 29.
   - SKT'de gün "00" ise ayın son günü sayılır.
-  - Sıra no ve parti no yalnızca rakam ve büyük harf içerir.
+  - Sıra no ve parti no (Madde 5): yalnızca 0-9 ve A-Z; semboller, özel işaretler ve küçük
+    harfler kullanılmaz. Program bu kuralı karekodlu ilaçlarda kesin uygular; karekodsuz
+    ürünlerde (kozmetik, medikal) küçük harf ve tire kabul edilir.
 
 ---
 
@@ -141,11 +143,16 @@ Aynı işi yapan ikinci bir dosya/fonksiyon oluşturma. Önce mevcut kodda ara.
 
 1. **Büyük işlerde önce plan yap**, bana göster, onayımı bekle. Sonra kodla.
 2. İşi küçük adımlara böl; bir seferde tek modül/özellik.
-3. **Önce testi yaz, sonra kodu yaz.** Her değişiklikten sonra çalıştır:
+3. **Önce testi yaz, sonra kodu yaz.** Her değişiklikten sonra hızlı testleri çalıştır:
    ```
-   .venv\Scripts\pytest
+   .venv\Scripts\pytest -m "not yavas"
    .venv\Scripts\pyright
    ```
+   **Commit öncesi tüm testler** çalıştırılır (bağlantı kopması gibi `yavas` işaretli olanlar dahil):
+   ```
+   .venv\Scripts\pytest
+   ```
+   Düz `pytest` bilerek hepsini çalıştırır. Uzun bekleyen yeni testler `@pytest.mark.yavas` ile işaretlenir.
    Testler veya Pyright hata veriyorsa işi bitmiş sayma.
 4. Her adım bitince bana şunları Türkçe ve kısaca anlat:
    - Ne yaptın, hangi dosyaları değiştirdin
@@ -224,5 +231,5 @@ Bu maddeler tamamlanmadan program gerçek bir eczanede, gerçek veriyle kullanı
 - [ ] Disk şifreleme (BitLocker)
 - [ ] Bağlantı beklemesinin arka plana alınması
 - [ ] Parola kurtarma komutunun paketlemede kolaylaştırılması (şu an `.venv` ve komut satırı gerektiriyor)
-- [ ] ITS erişimi için eczanenin IP adresinin ITS'de kayıtlı olması (hata 11218); sabit IP gerekebilir.
-  Hata açıklaması 10. adımda `ITS_Hata_Kodlari.pdf`'ten doğrulanacak.
+- [ ] ITS erişimi için eczanenin IP adresinin ITS'de kayıtlı olması; sabit IP gerekebilir.
+  Hata 11218: "Sistemde kayıtlı olmayan IP ile erişim sağlayamazsınız." (`ITS_Hata_Kodlari.pdf`)

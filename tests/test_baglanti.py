@@ -20,6 +20,7 @@ def test_tek_komutlar_acik_islem_birakmaz(uygulama_ayari: VeritabaniAyari) -> No
         assert baglanti.info.transaction_status == psycopg.pq.TransactionStatus.IDLE
 
 
+@pytest.mark.yavas
 def test_sunucuya_ulasilamazsa_hata_verir(uygulama_ayari: VeritabaniAyari) -> None:
     with pytest.raises(psycopg.OperationalError):
         baglanti_ac(replace(uygulama_ayari, port=1))

@@ -98,6 +98,7 @@ def test_parola_alani_yazilani_gizler(uygulama_ayari: VeritabaniAyari) -> None:
     assert pencere.parola_alani.echoMode() == QLineEdit.EchoMode.Password
 
 
+@pytest.mark.yavas
 def test_baglanti_kopunca_program_dusmez_sonra_tekrar_denenebilir(
     kayitli_baglanti: Baglanti, uygulama_ayari: VeritabaniAyari
 ) -> None:
@@ -164,6 +165,7 @@ def test_kisa_parolada_turkce_uyari_gosterilir(uygulama_ayari: VeritabaniAyari) 
     assert "en az 8" in pencere.hata_etiketi.text()
 
 
+@pytest.mark.yavas
 def test_ilk_kullanici_kaydinda_baglanti_yoksa_turkce_uyari_verilir(
     uygulama_ayari: VeritabaniAyari,
 ) -> None:

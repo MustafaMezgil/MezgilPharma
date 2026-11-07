@@ -63,6 +63,7 @@ def test_guncellenmemis_veritabaninda_turkce_mesaj_gosterilir(
 
 
 @pytest.mark.usefixtures("qt_uygulamasi", "temiz_gunluk")
+@pytest.mark.yavas
 def test_ana_makineye_ulasilamazsa_turkce_mesaj_gosterilir_parola_loga_yazilmaz(
     ayarlar: Ayarlar, mesajlar: list[str]
 ) -> None:

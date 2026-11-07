@@ -11,6 +11,10 @@ KULLANICI = Kullanici(id=1, kullanici_adi="test", ad_soyad="Test Kişi", rol=Rol
 AYAR = VeritabaniAyari("localhost", 1, "eczane_pytest", "sahte", "sahte")
 
 
+def _listeyi_okuma(_pencere: object) -> None:
+    """Menu testleri pencerenin acildigini sinar; veritabanina baglanmaya gerek yoktur."""
+
+
 def _etiket_metni(pencere: AnaPencere, ad: str) -> str:
     etiket = pencere.findChild(QLabel, ad)
     assert etiket is not None
@@ -73,6 +77,7 @@ def test_urunler_menusu_her_iki_role_de_acilir(
         return 0
 
     monkeypatch.setattr(UrunlerPenceresi, "exec", _exec)
+    monkeypatch.setattr(UrunlerPenceresi, "_yenile", _listeyi_okuma)
     kullanici = Kullanici(id=1, kullanici_adi="test", ad_soyad="Test Kişi", rol=rol)
     pencere = AnaPencere(Ortam.TEST, 1, kullanici, AYAR)
 
@@ -106,6 +111,7 @@ def test_kullanicilar_menusu_pencereyi_acar(monkeypatch: pytest.MonkeyPatch) -> 
         return 0
 
     monkeypatch.setattr(KullanicilarPenceresi, "exec", _exec)
+    monkeypatch.setattr(KullanicilarPenceresi, "_yenile", _listeyi_okuma)
     pencere = AnaPencere(Ortam.TEST, 1, KULLANICI, AYAR)
     assert pencere.kullanicilar_eylemi is not None
 
