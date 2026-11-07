@@ -1,11 +1,13 @@
-"""Urun karti: ekleme, duzenleme, fiyat gecmisi, arama, pasif yapma.
+"""Urun karti: ekleme, duzenleme, fiyat gecmisi, arama, pasif yapma, eczaci onayi.
 
-Roller: Personel karti fiyatsiz acar ve fiyat disindaki bilgileri duzenler.
-Fiyat, KDV ve pasif yapma eczacinindir. Yetki her islemde veritabanindan okunur.
+Roller: Personel karti fiyatsiz acar; actigi kart eczaci onayi bekler. Personel recete
+turu, barkod, karekodlu ve urun turunu yeni kartta doldurur ama sonradan degistiremez.
+Fiyat, KDV, pasif yapma ve onay eczacinindir. Yetki her islemde veritabanindan okunur.
+Her kart islemi erisim_log'a yazilir.
 """
 
 import re
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from datetime import date
 from decimal import Decimal
 from enum import Enum
@@ -22,6 +24,7 @@ from moduller.kullanici.servis import (
     YetkiHatasi,
     aktif_rol_getir,
     eczaci_dogrula,
+    islem_kaydet,
 )
 from moduller.para import oran_dogrula, tutar_dogrula
 from veritabani.baglanti import Baglanti
@@ -32,6 +35,18 @@ _ATC_KODU = re.compile(r"[A-Z0-9]{1,7}")
 _ARAMA_HARFLERI = str.maketrans("İIışğçöüŞĞÇÖÜ", "iiisgcousgcou")
 _BULUNAMADI_MESAJI = "Ürün bulunamadı."
 _FIYAT_YETKI_MESAJI = "Fiyat ve KDV bilgisini yalnızca eczacı girebilir."
+_KAYIT_TURU = "urun"
+# Personelin yeni kartta doldurup sonradan degistiremedigi alanlar.
+_ECZACI_ALANLARI = frozenset({"urun_turu", "recete_turu", "gtin", "karekodlu"})
+# Erisim kaydina eski ve yeni degeriyle yazilan alanlar; digerlerinin yalnizca adi yazilir.
+_DEGERI_KAYDEDILEN_ALANLAR = (
+    "urun_turu",
+    "recete_turu",
+    "gtin",
+    "karekodlu",
+    "soguk_zincir",
+    "kdv_orani",
+)
 
 _URUN_SORGUSU: LiteralString = """
     SELECT u.*, COALESCE(s.miktar, 0) AS stok_miktari, s.en_yakin_skt
@@ -107,6 +122,7 @@ class Urun:
     kamu_fiyati: Decimal | None
     kdv_orani: Decimal | None
     aktif: bool
+    onay_bekliyor: bool
     stok_miktari: int
     en_yakin_skt: date | None
 
@@ -279,11 +295,11 @@ def urun_ekle(
             satir = baglanti.execute(
                 "INSERT INTO urunler (ad, arama_metni, gtin, urun_turu, karekodlu, recete_turu, "
                 "etken_madde, farmasotik_form, atc_kodu, uretici_firma, soguk_zincir, raf_yeri, "
-                "kritik_stok) VALUES (%(ad)s, %(arama_metni)s, %(gtin)s, %(urun_turu)s, "
-                "%(karekodlu)s, %(recete_turu)s, %(etken_madde)s, %(farmasotik_form)s, "
-                "%(atc_kodu)s, %(uretici_firma)s, %(soguk_zincir)s, %(raf_yeri)s, "
-                "%(kritik_stok)s) RETURNING id",
-                _bilgi_degerleri(duzenli),
+                "kritik_stok, onay_bekliyor) VALUES (%(ad)s, %(arama_metni)s, %(gtin)s, "
+                "%(urun_turu)s, %(karekodlu)s, %(recete_turu)s, %(etken_madde)s, "
+                "%(farmasotik_form)s, %(atc_kodu)s, %(uretici_firma)s, %(soguk_zincir)s, "
+                "%(raf_yeri)s, %(kritik_stok)s, %(onay_bekliyor)s) RETURNING id",
+                {**_bilgi_degerleri(duzenli), "onay_bekliyor": rol is not Rol.ECZACI},
             ).fetchone()
         except psycopg.errors.UniqueViolation as hata:
             raise GorunurHata("Bu barkod başka bir üründe kayıtlı.") from hata
@@ -291,7 +307,17 @@ def urun_ekle(
         urun_id: int = satir["id"]
         if fiyat is not None:
             _fiyat_kaydet(baglanti, yapan, urun_id, fiyat)
+        islem_kaydet(baglanti, yapan.id, "urun_ekleme", urun_id, kayit_turu=_KAYIT_TURU)
     return urun_id
+
+
+def _kayit_degeri(deger: object) -> object:
+    """Erisim kaydina yazilacak degeri JSON'a uygun hale getirir."""
+    if isinstance(deger, Enum):
+        return deger.value
+    if isinstance(deger, Decimal):
+        return f"{deger:.2f}"
+    return deger
 
 
 def urun_guncelle(
@@ -301,7 +327,7 @@ def urun_guncelle(
     bilgi: UrunBilgisi,
     fiyat: UrunFiyati | None,
 ) -> None:
-    """Karti duzenler. fiyat None ise fiyatlara dokunulmaz."""
+    """Karti duzenler. fiyat None ise fiyatlara dokunulmaz. Degisiklik varsa kaydedilir."""
     with baglanti.transaction():
         rol = aktif_rol_getir(baglanti, yapan)
         if rol is not Rol.ECZACI and fiyat is not None:
@@ -309,66 +335,138 @@ def urun_guncelle(
         duzenli = _bilgiyi_duzenle(bilgi)
         if fiyat is not None:
             _fiyati_dogrula(fiyat)
+        eski_satir = baglanti.execute(
+            "SELECT * FROM urunler WHERE id = %s FOR UPDATE", (urun_id,)
+        ).fetchone()
+        if eski_satir is None:
+            raise GorunurHata(_BULUNAMADI_MESAJI)
+        eski_bilgi = _satirdan_bilgi(eski_satir)
+
+        eski: dict[str, object] = {f.name: getattr(eski_bilgi, f.name) for f in fields(UrunBilgisi)}
+        yeni: dict[str, object] = {f.name: getattr(duzenli, f.name) for f in fields(UrunBilgisi)}
+        if fiyat is not None:
+            eski.update(
+                psf=eski_satir["psf"],
+                kamu_fiyati=eski_satir["kamu_fiyati"],
+                kdv_orani=eski_satir["kdv_orani"],
+            )
+            yeni.update(psf=fiyat.psf, kamu_fiyati=fiyat.kamu_fiyati, kdv_orani=fiyat.kdv_orani)
+        degisen = sorted(alan for alan in yeni if yeni[alan] != eski[alan])
+
+        if rol is not Rol.ECZACI and _ECZACI_ALANLARI.intersection(degisen):
+            raise YetkiHatasi(
+                "Reçete türü, barkod, karekod ve ürün türünü yalnızca eczacı değiştirebilir. "
+                "Kart bu arada değiştiyse kapatıp yeniden açın."
+            )
+        if not degisen:
+            return
+
         try:
-            satir = baglanti.execute(
+            baglanti.execute(
                 "UPDATE urunler SET ad = %(ad)s, arama_metni = %(arama_metni)s, gtin = %(gtin)s, "
                 "urun_turu = %(urun_turu)s, karekodlu = %(karekodlu)s, "
                 "recete_turu = %(recete_turu)s, etken_madde = %(etken_madde)s, "
                 "farmasotik_form = %(farmasotik_form)s, atc_kodu = %(atc_kodu)s, "
                 "uretici_firma = %(uretici_firma)s, soguk_zincir = %(soguk_zincir)s, "
                 "raf_yeri = %(raf_yeri)s, kritik_stok = %(kritik_stok)s "
-                "WHERE id = %(urun_id)s RETURNING id",
+                "WHERE id = %(urun_id)s",
                 {**_bilgi_degerleri(duzenli), "urun_id": urun_id},
-            ).fetchone()
+            )
         except psycopg.errors.UniqueViolation as hata:
             raise GorunurHata("Bu barkod başka bir üründe kayıtlı.") from hata
-        if satir is None:
-            raise GorunurHata(_BULUNAMADI_MESAJI)
         if fiyat is not None:
             _fiyat_kaydet(baglanti, yapan, urun_id, fiyat)
 
+        kritik = {
+            alan: {"eski": _kayit_degeri(eski[alan]), "yeni": _kayit_degeri(yeni[alan])}
+            for alan in _DEGERI_KAYDEDILEN_ALANLAR
+            if alan in degisen
+        }
+        islem_kaydet(
+            baglanti,
+            yapan.id,
+            "urun_guncelleme",
+            urun_id,
+            kayit_turu=_KAYIT_TURU,
+            ayrinti={"degisen": degisen, "kritik": kritik},
+        )
 
-def urun_pasif_yap(baglanti: Baglanti, yapan: Kullanici, urun_id: int) -> None:
+
+def _durum_degistir(
+    baglanti: Baglanti,
+    yapan: Kullanici,
+    urun_id: int,
+    sorgu: LiteralString,
+    islem: str,
+    hata_mesaji: str,
+) -> None:
     with baglanti.transaction():
         eczaci_dogrula(baglanti, yapan)
-        satir = baglanti.execute(
-            "UPDATE urunler SET aktif = FALSE WHERE id = %s AND aktif RETURNING id", (urun_id,)
-        ).fetchone()
-        if satir is None:
-            raise GorunurHata("Ürün bulunamadı veya zaten pasif.")
+        if baglanti.execute(sorgu, (urun_id,)).fetchone() is None:
+            raise GorunurHata(hata_mesaji)
+        islem_kaydet(baglanti, yapan.id, islem, urun_id, kayit_turu=_KAYIT_TURU)
+
+
+def urun_pasif_yap(baglanti: Baglanti, yapan: Kullanici, urun_id: int) -> None:
+    _durum_degistir(
+        baglanti,
+        yapan,
+        urun_id,
+        "UPDATE urunler SET aktif = FALSE WHERE id = %s AND aktif RETURNING id",
+        "urun_pasif_yapma",
+        "Ürün bulunamadı veya zaten pasif.",
+    )
 
 
 def urun_aktif_yap(baglanti: Baglanti, yapan: Kullanici, urun_id: int) -> None:
-    with baglanti.transaction():
-        eczaci_dogrula(baglanti, yapan)
-        satir = baglanti.execute(
-            "UPDATE urunler SET aktif = TRUE WHERE id = %s AND NOT aktif RETURNING id", (urun_id,)
-        ).fetchone()
-        if satir is None:
-            raise GorunurHata("Ürün bulunamadı veya zaten aktif.")
+    _durum_degistir(
+        baglanti,
+        yapan,
+        urun_id,
+        "UPDATE urunler SET aktif = TRUE WHERE id = %s AND NOT aktif RETURNING id",
+        "urun_aktif_yapma",
+        "Ürün bulunamadı veya zaten aktif.",
+    )
+
+
+def urun_onayla(baglanti: Baglanti, yapan: Kullanici, urun_id: int) -> None:
+    """Personelin actigi karti eczaci onaylar."""
+    _durum_degistir(
+        baglanti,
+        yapan,
+        urun_id,
+        "UPDATE urunler SET onay_bekliyor = FALSE WHERE id = %s AND onay_bekliyor RETURNING id",
+        "urun_onaylama",
+        "Bu ürün eczacı onayı beklemiyor.",
+    )
+
+
+def _satirdan_bilgi(satir: DictRow) -> UrunBilgisi:
+    return UrunBilgisi(
+        ad=satir["ad"],
+        gtin=satir["gtin"],
+        urun_turu=UrunTuru(satir["urun_turu"]),
+        karekodlu=satir["karekodlu"],
+        recete_turu=ReceteTuru(satir["recete_turu"]),
+        kritik_stok=satir["kritik_stok"],
+        raf_yeri=satir["raf_yeri"],
+        etken_madde=satir["etken_madde"],
+        farmasotik_form=satir["farmasotik_form"],
+        atc_kodu=satir["atc_kodu"],
+        uretici_firma=satir["uretici_firma"],
+        soguk_zincir=satir["soguk_zincir"],
+    )
 
 
 def _satirdan_urun(satir: DictRow) -> Urun:
     return Urun(
         id=satir["id"],
-        bilgi=UrunBilgisi(
-            ad=satir["ad"],
-            gtin=satir["gtin"],
-            urun_turu=UrunTuru(satir["urun_turu"]),
-            karekodlu=satir["karekodlu"],
-            recete_turu=ReceteTuru(satir["recete_turu"]),
-            kritik_stok=satir["kritik_stok"],
-            raf_yeri=satir["raf_yeri"],
-            etken_madde=satir["etken_madde"],
-            farmasotik_form=satir["farmasotik_form"],
-            atc_kodu=satir["atc_kodu"],
-            uretici_firma=satir["uretici_firma"],
-            soguk_zincir=satir["soguk_zincir"],
-        ),
+        bilgi=_satirdan_bilgi(satir),
         psf=satir["psf"],
         kamu_fiyati=satir["kamu_fiyati"],
         kdv_orani=satir["kdv_orani"],
         aktif=satir["aktif"],
+        onay_bekliyor=satir["onay_bekliyor"],
         stok_miktari=int(satir["stok_miktari"]),
         en_yakin_skt=satir["en_yakin_skt"],
     )
@@ -393,6 +491,7 @@ def urun_ara(
     aranan: str,
     *,
     pasifler_dahil: bool = False,
+    yalnizca_onay_bekleyen: bool = False,
     limit: int = ARAMA_SINIRI,
 ) -> list[Urun]:
     """Ad, etken madde, form, ATC, firma ve barkodda arar. Her kelime gecmelidir."""
@@ -401,7 +500,8 @@ def urun_ara(
     satirlar = baglanti.execute(
         _URUN_SORGUSU
         + " WHERE u.arama_metni LIKE ALL (%s::text[]) AND (u.aktif OR %s)"
+        " AND (u.onay_bekliyor OR NOT %s)"
         " ORDER BY u.arama_metni, u.id LIMIT %s",
-        (kaliplar, pasifler_dahil, limit),
+        (kaliplar, pasifler_dahil, yalnizca_onay_bekleyen, limit),
     ).fetchall()
     return [_satirdan_urun(satir) for satir in satirlar]

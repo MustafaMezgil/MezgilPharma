@@ -30,6 +30,7 @@ from moduller.ilac.servis import (
     urun_ekle,
     urun_getir,
     urun_guncelle,
+    urun_onayla,
     urun_pasif_yap,
 )
 from moduller.kullanici.servis import Kullanici, Rol
@@ -111,6 +112,15 @@ class UrunKartiPenceresi(QDialog):
         eczaci = yapan.rol is Rol.ECZACI
         for alan in (self.psf_alani, self.kamu_alani, self.kdv_alani):
             alan.setEnabled(eczaci)
+        # Personel bu alanlari yeni kartta doldurur, mevcut kartta degistiremez.
+        if urun is not None and not eczaci:
+            for alan in (
+                self.gtin_alani,
+                self.tur_secimi,
+                self.karekodlu_kutusu,
+                self.recete_secimi,
+            ):
+                alan.setEnabled(False)
 
     def _doldur(self, urun: Urun) -> None:
         bilgi = urun.bilgi
@@ -190,6 +200,12 @@ class UrunKartiPenceresi(QDialog):
             self.accept()
 
 
+def _durum_metni(urun: Urun) -> str:
+    if not urun.aktif:
+        return "Pasif"
+    return "Onay bekliyor" if urun.onay_bekliyor else "Aktif"
+
+
 class UrunlerPenceresi(QDialog):
     def __init__(self, veritabani_ayari: VeritabaniAyari, yapan: Kullanici) -> None:
         super().__init__()
@@ -203,6 +219,7 @@ class UrunlerPenceresi(QDialog):
         self.arama_alani.setPlaceholderText("Ad, etken madde, ATC kodu veya barkod")
         self.ara_dugmesi = QPushButton("Ara")
         self.pasifleri_goster = QCheckBox("Pasifleri göster")
+        self.onay_bekleyenler = QCheckBox("Yalnızca onay bekleyenler")
         self.tablo = QTableWidget(0, len(_SUTUNLAR))
         self.tablo.setHorizontalHeaderLabels(_SUTUNLAR)
         self.tablo.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
@@ -212,24 +229,28 @@ class UrunlerPenceresi(QDialog):
         self.yeni_dugmesi = QPushButton("Yeni Ürün")
         self.duzenle_dugmesi = QPushButton("Düzenle")
         self.pasif_aktif_dugmesi = QPushButton("Pasif Yap")
+        self.onayla_dugmesi = QPushButton("Onayla")
         kapat_dugmesi = QPushButton("Kapat")
 
         ust = QHBoxLayout()
         ust.addWidget(self.arama_alani)
         ust.addWidget(self.ara_dugmesi)
         ust.addWidget(self.pasifleri_goster)
+        ust.addWidget(self.onay_bekleyenler)
         alt = QHBoxLayout()
         for dugme in (
             self.ara_dugmesi,
             self.yeni_dugmesi,
             self.duzenle_dugmesi,
             self.pasif_aktif_dugmesi,
+            self.onayla_dugmesi,
             kapat_dugmesi,
         ):
             dugme.setAutoDefault(False)
         alt.addWidget(self.yeni_dugmesi)
         alt.addWidget(self.duzenle_dugmesi)
         alt.addWidget(self.pasif_aktif_dugmesi)
+        alt.addWidget(self.onayla_dugmesi)
         alt.addStretch()
         alt.addWidget(kapat_dugmesi)
         duzen = QVBoxLayout(self)
@@ -239,13 +260,20 @@ class UrunlerPenceresi(QDialog):
         duzen.addLayout(alt)
 
         eczaci = yapan.rol is Rol.ECZACI
-        self.pasif_aktif_dugmesi.setVisible(eczaci)
-        self.pasifleri_goster.setVisible(eczaci)
+        for parca in (
+            self.pasif_aktif_dugmesi,
+            self.pasifleri_goster,
+            self.onayla_dugmesi,
+            self.onay_bekleyenler,
+        ):
+            parca.setVisible(eczaci)
 
         # Barkod okuyucu okuttuktan sonra Enter gonderir: arama hemen calisir.
         self.arama_alani.returnPressed.connect(self._yenile)
         self.ara_dugmesi.clicked.connect(self._yenile)
         self.pasifleri_goster.toggled.connect(self._yenile)
+        self.onay_bekleyenler.toggled.connect(self._yenile)
+        self.onayla_dugmesi.clicked.connect(self._onayla)
         self.tablo.itemSelectionChanged.connect(self._secim_degisti)
         self.tablo.itemDoubleClicked.connect(self._duzenle)
         self.yeni_dugmesi.clicked.connect(self._yeni)
@@ -262,6 +290,7 @@ class UrunlerPenceresi(QDialog):
                 self._yapan,
                 self.arama_alani.text(),
                 pasifler_dahil=self.pasifleri_goster.isChecked(),
+                yalnizca_onay_bekleyen=self.onay_bekleyenler.isChecked(),
                 limit=ARAMA_SINIRI,
             )
 
@@ -277,7 +306,7 @@ class UrunlerPenceresi(QDialog):
                 str(urun.stok_miktari),
                 urun.en_yakin_skt.strftime("%d.%m.%Y") if urun.en_yakin_skt else "-",
                 para_metni(urun.psf) if urun.psf is not None else "Fiyat girilmedi",
-                "Aktif" if urun.aktif else "Pasif",
+                _durum_metni(urun),
             )
             for sutun, deger in enumerate(degerler):
                 self.tablo.setItem(satir, sutun, QTableWidgetItem(deger))
@@ -335,6 +364,17 @@ class UrunlerPenceresi(QDialog):
             self._veritabani_ayari,
             self.hata_etiketi,
             lambda baglanti: islem(baglanti, self._yapan, urun.id),
+        ):
+            self._yenile()
+
+    def _onayla(self) -> None:
+        urun = self._secileni_al()
+        if urun is None:
+            return
+        if islemi_calistir(
+            self._veritabani_ayari,
+            self.hata_etiketi,
+            lambda baglanti: urun_onayla(baglanti, self._yapan, urun.id),
         ):
             self._yenile()
 

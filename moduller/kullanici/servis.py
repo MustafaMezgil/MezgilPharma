@@ -6,6 +6,7 @@ from enum import Enum
 
 import psycopg
 from psycopg.rows import DictRow
+from psycopg.types.json import Jsonb
 
 from moduller.hatalar import GorunurHata
 from moduller.kullanici.parola import parola_dogru_mu, parola_ozetle
@@ -168,12 +169,20 @@ def giris_dogrula(
     raise HesapKilitliHatasi(f"Hesap kilitli. {dakika} dakika sonra tekrar deneyin.")
 
 
-def islem_kaydet(baglanti: Baglanti, yapan_id: int, islem: str, hedef_id: int) -> None:
-    """Hesap islemini denetim kaydina yazar. Parola veya kisisel bilgi yazilmaz."""
+def islem_kaydet(
+    baglanti: Baglanti,
+    yapan_id: int,
+    islem: str,
+    hedef_id: int,
+    *,
+    kayit_turu: str = _KAYIT_TURU,
+    ayrinti: dict[str, object] | None = None,
+) -> None:
+    """Islemi denetim kaydina yazar. Parola veya hasta bilgisi yazilmaz."""
     baglanti.execute(
-        "INSERT INTO erisim_log (kullanici_id, islem, kayit_turu, kayit_id) "
-        "VALUES (%s, %s, %s, %s)",
-        (yapan_id, islem, _KAYIT_TURU, hedef_id),
+        "INSERT INTO erisim_log (kullanici_id, islem, kayit_turu, kayit_id, ayrinti) "
+        "VALUES (%s, %s, %s, %s, %s)",
+        (yapan_id, islem, kayit_turu, hedef_id, Jsonb(ayrinti) if ayrinti is not None else None),
     )
 
 

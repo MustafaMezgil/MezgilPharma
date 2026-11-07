@@ -365,12 +365,10 @@ def test_personel_fiyat_disindaki_bilgileri_duzenler(
 ) -> None:
     urun_id = urun_ekle(uygulama_baglanti, eczaci, _bilgi(), FIYAT)
 
-    urun_guncelle(
-        uygulama_baglanti, personel, urun_id, _bilgi(recete_turu=ReceteTuru.KIRMIZI), None
-    )
+    urun_guncelle(uygulama_baglanti, personel, urun_id, _bilgi(ad="Personel Düzeltti"), None)
 
     urun = urun_getir(uygulama_baglanti, personel, urun_id)
-    assert urun.recete_turu is ReceteTuru.KIRMIZI
+    assert urun.ad == "Personel Düzeltti"
     assert urun.psf == FIYAT.psf
 
 

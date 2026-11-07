@@ -22,3 +22,6 @@ dist/
 *.dump
 *.backup
 *.bak
+
+# SKRS ve benzeri resmi listeler (buyuk dosyalar; testler tests/ icindeki ornekle calisir)
+veri/listeler/

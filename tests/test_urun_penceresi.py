@@ -246,6 +246,52 @@ def test_personel_duzenlemede_fiyati_bozmaz(
     assert guncel.psf == FIYAT.psf
 
 
+def _kritik_alanlar(pencere: UrunKartiPenceresi) -> list[QWidget]:
+    return [
+        pencere.gtin_alani,
+        pencere.tur_secimi,
+        pencere.karekodlu_kutusu,
+        pencere.recete_secimi,
+    ]
+
+
+def test_personel_yeni_kartta_kritik_alanlari_doldurabilir(
+    uygulama_ayari: VeritabaniAyari, personel: Kullanici
+) -> None:
+    pencere = UrunKartiPenceresi(uygulama_ayari, personel)
+    assert all(alan.isEnabled() for alan in _kritik_alanlar(pencere))
+
+
+def test_personel_duzenlemede_kritik_alanlar_kapalidir(
+    uygulama_baglanti: Baglanti,
+    uygulama_ayari: VeritabaniAyari,
+    eczaci: Kullanici,
+    personel: Kullanici,
+) -> None:
+    urun_id = urun_ekle(uygulama_baglanti, eczaci, _bilgi(), FIYAT)
+    urun = urun_getir(uygulama_baglanti, personel, urun_id)
+
+    pencere = UrunKartiPenceresi(uygulama_ayari, personel, urun)
+
+    assert not any(alan.isEnabled() for alan in _kritik_alanlar(pencere))
+    assert pencere.ad_alani.isEnabled()
+    assert pencere.soguk_zincir_kutusu.isEnabled()
+
+
+def test_eczaci_duzenlemede_kritik_alanlari_degistirebilir(
+    uygulama_baglanti: Baglanti, uygulama_ayari: VeritabaniAyari, eczaci: Kullanici
+) -> None:
+    urun_id = urun_ekle(uygulama_baglanti, eczaci, _bilgi(), FIYAT)
+    urun = urun_getir(uygulama_baglanti, eczaci, urun_id)
+
+    pencere = UrunKartiPenceresi(uygulama_ayari, eczaci, urun)
+    pencere.recete_secimi.setCurrentIndex(pencere.recete_secimi.findData(ReceteTuru.MOR))
+    pencere.kaydet_dugmesi.click()
+
+    assert pencere.result() == QDialog.DialogCode.Accepted
+    assert urun_getir(uygulama_baglanti, eczaci, urun_id).recete_turu is ReceteTuru.MOR
+
+
 @pytest.mark.yavas
 def test_baglanti_yoksa_kart_ekranı_turkce_uyari_verir(
     uygulama_ayari: VeritabaniAyari, eczaci: Kullanici
@@ -359,12 +405,64 @@ def test_pasif_yapma_onay_ister_stok_miktarini_soyler_reddedilirse_yapmaz(
     assert urun_getir(uygulama_baglanti, eczaci, urun_id).aktif
 
 
-def test_personelde_pasif_dugmesi_yoktur(
+def test_personelde_pasif_ve_onay_dugmeleri_yoktur(
     uygulama_ayari: VeritabaniAyari, personel: Kullanici
 ) -> None:
     pencere = UrunlerPenceresi(uygulama_ayari, personel)
     assert pencere.pasif_aktif_dugmesi.isHidden()
     assert pencere.pasifleri_goster.isHidden()
+    assert pencere.onayla_dugmesi.isHidden()
+    assert pencere.onay_bekleyenler.isHidden()
+
+
+def test_personelin_actigi_kart_onay_bekliyor_gorunur_ve_onaylanir(
+    uygulama_baglanti: Baglanti,
+    uygulama_ayari: VeritabaniAyari,
+    eczaci: Kullanici,
+    personel: Kullanici,
+) -> None:
+    urun_ekle(uygulama_baglanti, personel, _bilgi(), None)
+    pencere = UrunlerPenceresi(uygulama_ayari, eczaci)
+    assert _sutun_metni(pencere, 0, 5) == "Onay bekliyor"
+
+    pencere.tablo.selectRow(0)
+    pencere.onayla_dugmesi.click()
+
+    assert _sutun_metni(pencere, 0, 5) == "Aktif"
+
+
+def test_onay_bekleyenler_kutusu_listeyi_suzer(
+    uygulama_baglanti: Baglanti,
+    uygulama_ayari: VeritabaniAyari,
+    eczaci: Kullanici,
+    personel: Kullanici,
+) -> None:
+    urun_ekle(uygulama_baglanti, personel, _bilgi(), None)
+    urun_ekle(
+        uygulama_baglanti,
+        eczaci,
+        replace(_bilgi("Eczacı Kartı"), gtin="08699788698084"),
+        FIYAT,
+    )
+    pencere = UrunlerPenceresi(uygulama_ayari, eczaci)
+    assert pencere.tablo.rowCount() == 2
+
+    pencere.onay_bekleyenler.setChecked(True)
+
+    assert pencere.tablo.rowCount() == 1
+    assert _sutun_metni(pencere, 0, 0) == "Deneme İlaç"
+
+
+def test_onay_beklemeyen_kart_onaylanmak_istenirse_uyari(
+    uygulama_baglanti: Baglanti, uygulama_ayari: VeritabaniAyari, eczaci: Kullanici
+) -> None:
+    urun_ekle(uygulama_baglanti, eczaci, _bilgi(), FIYAT)
+    pencere = UrunlerPenceresi(uygulama_ayari, eczaci)
+    pencere.tablo.selectRow(0)
+
+    pencere.onayla_dugmesi.click()
+
+    assert "onay" in pencere.hata_etiketi.text()
 
 
 def test_secim_yokken_duzenle_uyari_verir(
