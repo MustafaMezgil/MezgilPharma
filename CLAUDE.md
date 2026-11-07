@@ -101,6 +101,8 @@ Aynı işi yapan ikinci bir dosya/fonksiyon oluşturma. Önce mevcut kodda ara.
   bağlantı gelince gönderilir.
 - Satış, iade, deaktivasyon gibi geri alınamayan bildirimlerden önce kullanıcıdan
   onay alınır.
+- ITS hata kodlarının Türkçe açıklamaları `dokumanlar/its/ITS_Hata_Kodlari.pdf` içindedir.
+  10. adımda bu kodlar kullanıcıya anlaşılır mesaj olarak gösterilir.
 
 ### Yapay zeka ve öneriler
 - Akıllı sipariş, reçete/rapor kontrolü gibi özellikler **yalnızca öneri ve uyarı**
@@ -127,6 +129,11 @@ Aynı işi yapan ikinci bir dosya/fonksiyon oluşturma. Önce mevcut kodda ara.
 - GS1 DataMatrix ayrıştırma `karekod/` modülündedir: (01) GTIN, (21) seri no,
   (17) SKT, (10) parti no, FNC1 ayıracı, değişken uzunluklu alanlar.
 - Her yeni karekod durumu için test eklenir.
+- **Kaynak:** `dokumanlar/its/Beseri_Tibbi_Urunler_Barkod_ve_Karekod_Uygulama_Kilavuzu.pdf`
+  (3. adımdaki karekod modülünün kaynağı):
+  - Alan sırası 01 → 21 → GS → 17 → 10; grup ayracı (GS) ASCII 29.
+  - SKT'de gün "00" ise ayın son günü sayılır.
+  - Sıra no ve parti no yalnızca rakam ve büyük harf içerir.
 
 ---
 
@@ -188,10 +195,16 @@ Aynı işi yapan ikinci bir dosya/fonksiyon oluşturma. Önce mevcut kodda ara.
 
 Şu an üzerinde çalışılan adım: **2**
 
+### 2. adımın sonunda yapılacak
+
+- **"Liste içe aktar":** SKRS E-Reçete İlaç Listesi'nden ürün kartlarını doldurma. Fiyat kaynağı
+  henüz belli değil; fiyat içe aktarma sonraya kalır.
+
 ### Satış ekranı (4. adım) başlarken ele alınacaklar
 
-Bu iki konu kullanıcı yönetimi yapılırken bilerek ertelendi; satış ekranının planına eklenecek:
+Bu konular daha önceki adımlarda bilerek ertelendi; satış ekranının planına eklenecek:
 
+- **Eczane içi barkod:** Barkodsuz ürünler için "2" önekli eczane içi barkod üretme seçeneği.
 - **Açık oturumlar:** Pasif yapılan ya da parolası sıfırlanan kişinin açık programı kapanmıyor.
   Şu an yalnızca eczacı işlemleri (Kullanıcılar ekranı) yetkiyi veritabanından denetleyip reddediyor.
   Satış ve stok ekranlarında bu kişinin nasıl durdurulacağı belirlenecek.
@@ -211,3 +224,5 @@ Bu maddeler tamamlanmadan program gerçek bir eczanede, gerçek veriyle kullanı
 - [ ] Disk şifreleme (BitLocker)
 - [ ] Bağlantı beklemesinin arka plana alınması
 - [ ] Parola kurtarma komutunun paketlemede kolaylaştırılması (şu an `.venv` ve komut satırı gerektiriyor)
+- [ ] ITS erişimi için eczanenin IP adresinin ITS'de kayıtlı olması (hata 11218); sabit IP gerekebilir.
+  Hata açıklaması 10. adımda `ITS_Hata_Kodlari.pdf`'ten doğrulanacak.
