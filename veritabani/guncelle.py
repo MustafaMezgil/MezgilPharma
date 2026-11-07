@@ -91,6 +91,10 @@ def yetkileri_ver(baglanti: Baglanti, kullanici: str) -> None:
         # Urun ve parti silinmez: urun pasif yapilir, biten partinin miktari sifir kalir.
         "REVOKE DELETE ON urunler FROM {}",
         "REVOKE DELETE ON stok_partileri FROM {}",
+        # Stok defteri: eklenir ve okunur; hatali islem karsi kayitla duzeltilir.
+        "REVOKE UPDATE, DELETE ON stok_hareketleri FROM {}",
+        # Depo silinmez, pasif yapilir.
+        "REVOKE DELETE ON tedarikciler FROM {}",
     )
     with baglanti.transaction():
         for komut in komutlar:

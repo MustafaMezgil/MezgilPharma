@@ -1,27 +1,33 @@
-"""Tutar ve oran okuma, denetleme, yazma. Para icin float kullanilmaz.
+"""Tutar ve oran okuma, denetleme, yuvarlama ve yazma. Para icin float kullanilmaz.
 
-Girilen tutar yuvarlanmaz: kurustan fazla ondalik varsa reddedilir.
+Yuvarlama kurali tek yerdedir: yuvarla(). Yarim ve ustu yukari yuvarlanir (ROUND_HALF_UP).
+Girilen tutar yuvarlanmaz: izin verilenden fazla ondalik varsa reddedilir.
 """
 
 import re
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 
 from moduller.hatalar import GorunurHata
 
 _AZAMI_TUTAR = Decimal("10000000000")  # NUMERIC(12, 2) siniri
 _AZAMI_ORAN = Decimal("100")
-_AZAMI_ONDALIK = 2
-_BINLIKLI = re.compile(r"[0-9]{1,3}(\.[0-9]{3})+,[0-9]{1,2}")
-_DUZ = re.compile(r"[0-9]+([.,][0-9]{1,2})?")
+_PARA_ONDALIGI = 2
+_BINLIKLI = r"[0-9]{1,3}(\.[0-9]{3})+,[0-9]{1,%d}"
+_DUZ = r"[0-9]+([.,][0-9]{1,%d})?"
 
 
-def tutar_dogrula(tutar: Decimal, alan: str) -> None:
-    """Tutar sifir veya pozitif, en fazla iki ondalikli ve sinirin altinda olmalidir."""
+def yuvarla(tutar: Decimal, hane: int) -> Decimal:
+    """Programdaki tek yuvarlama kurali: yarim ve ustu yukari (0,125 -> 0,13)."""
+    return tutar.quantize(Decimal(1).scaleb(-hane), rounding=ROUND_HALF_UP)
+
+
+def tutar_dogrula(tutar: Decimal, alan: str, *, ondalik: int = _PARA_ONDALIGI) -> None:
+    """Tutar sifir veya pozitif, en fazla izin verilen ondalikli ve sinirin altinda olmalidir."""
     if not tutar.is_finite() or tutar < 0 or tutar >= _AZAMI_TUTAR:
         raise GorunurHata(f"{alan}: geçerli bir tutar girin.")
     us = tutar.as_tuple().exponent
-    if isinstance(us, int) and us < -_AZAMI_ONDALIK:
-        raise GorunurHata(f"{alan}: kuruştan sonra en fazla iki hane yazılabilir.")
+    if isinstance(us, int) and us < -ondalik:
+        raise GorunurHata(f"{alan}: virgülden sonra en fazla {ondalik} hane yazılabilir.")
 
 
 def oran_dogrula(oran: Decimal, alan: str) -> None:
@@ -30,15 +36,15 @@ def oran_dogrula(oran: Decimal, alan: str) -> None:
         raise GorunurHata(f"{alan}: 0 ile 100 arasında olmalıdır.")
 
 
-def para_coz(metin: str, alan: str) -> Decimal:
+def para_coz(metin: str, alan: str, *, ondalik: int = _PARA_ONDALIGI) -> Decimal:
     """Kullanicinin yazdigi tutari okur. Belirsiz yaziyi (1.234 gibi) tahmin etmez."""
     temiz = metin.strip()
-    if _BINLIKLI.fullmatch(temiz):
+    if re.fullmatch(_BINLIKLI % ondalik, temiz):
         temiz = temiz.replace(".", "")
-    elif not _DUZ.fullmatch(temiz):
+    elif not re.fullmatch(_DUZ % ondalik, temiz):
         raise GorunurHata(f"{alan}: tutarı doğru yazın. Örnek: 125,50")
     tutar = Decimal(temiz.replace(",", "."))
-    tutar_dogrula(tutar, alan)
+    tutar_dogrula(tutar, alan, ondalik=ondalik)
     return tutar
 
 
@@ -50,4 +56,4 @@ def oran_coz(metin: str, alan: str) -> Decimal:
 
 def para_metni(tutar: Decimal) -> str:
     """Tutari ekranda gosterilecek bicimde yazar: 1.234,50"""
-    return f"{tutar:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"{yuvarla(tutar, _PARA_ONDALIGI):,}".replace(",", "X").replace(".", ",").replace("X", ".")

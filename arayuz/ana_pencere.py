@@ -1,12 +1,24 @@
 """Programin ana penceresi. Ortami, veritabani surumunu ve kullaniciyi gosterir."""
 
 from PyQt6.QtGui import QAction
-from PyQt6.QtWidgets import QLabel, QMainWindow, QMenu, QMenuBar, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import (
+    QInputDialog,
+    QLabel,
+    QMainWindow,
+    QMenu,
+    QMenuBar,
+    QMessageBox,
+    QVBoxLayout,
+    QWidget,
+)
 
 from arayuz.kullanici_penceresi import KullanicilarPenceresi, ParolaDegistirPenceresi
+from arayuz.ortak import islemi_calistir
+from arayuz.stok_penceresi import DepolarPenceresi, StokGirisiPenceresi
 from arayuz.urun_penceresi import UrunlerPenceresi
 from ayarlar import Ortam, VeritabaniAyari
 from moduller.kullanici.servis import Kullanici, Rol
+from moduller.stok.servis import miat_uyari_ayi, miat_uyari_ayi_ayarla
 
 
 class AnaPencere(QMainWindow):
@@ -56,6 +68,17 @@ class AnaPencere(QMainWindow):
         self.urunler_eylemi = QAction("Ürünler", self)
         self.urunler_eylemi.triggered.connect(self._urunler)
         stok_menusu.addAction(self.urunler_eylemi)
+        self.stok_girisi_eylemi = QAction("Stok Girişi", self)
+        self.stok_girisi_eylemi.triggered.connect(self._stok_girisi)
+        stok_menusu.addAction(self.stok_girisi_eylemi)
+        self.depolar_eylemi = QAction("Depolar", self)
+        self.depolar_eylemi.triggered.connect(self._depolar)
+        stok_menusu.addAction(self.depolar_eylemi)
+        self.miat_ayari_eylemi: QAction | None = None
+        if kullanici.rol is Rol.ECZACI:
+            self.miat_ayari_eylemi = QAction("Miat Uyarı Süresi", self)
+            self.miat_ayari_eylemi.triggered.connect(self._miat_ayari)
+            stok_menusu.addAction(self.miat_ayari_eylemi)
 
         cubuk = QMenuBar(self)
         cubuk.addMenu(stok_menusu)
@@ -64,6 +87,33 @@ class AnaPencere(QMainWindow):
 
     def _urunler(self) -> None:
         UrunlerPenceresi(self._veritabani_ayari, self._kullanici).exec()
+
+    def _stok_girisi(self) -> None:
+        StokGirisiPenceresi(self._veritabani_ayari, self._kullanici).exec()
+
+    def _depolar(self) -> None:
+        DepolarPenceresi(self._veritabani_ayari, self._kullanici).exec()
+
+    def _miat_ayari(self) -> None:
+        baslik = "Miat uyarı süresi"
+        hata = QLabel()
+        mevcut: list[int] = []
+        if not islemi_calistir(
+            self._veritabani_ayari,
+            hata,
+            lambda b: mevcut.append(miat_uyari_ayi(b, self._kullanici)),
+        ):
+            QMessageBox.warning(self, baslik, hata.text())
+            return
+        ay, tamam = QInputDialog.getInt(
+            self, baslik, "Son kullanma tarihine kaç ay kala uyarılsın?", mevcut[0], 1, 60
+        )
+        if tamam and not islemi_calistir(
+            self._veritabani_ayari,
+            hata,
+            lambda b: miat_uyari_ayi_ayarla(b, self._kullanici, ay),
+        ):
+            QMessageBox.warning(self, baslik, hata.text())
 
     def _parola_degistir(self) -> None:
         ParolaDegistirPenceresi(self._veritabani_ayari, self._kullanici).exec()

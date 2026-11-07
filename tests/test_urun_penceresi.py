@@ -314,7 +314,7 @@ def test_liste_urunu_turkce_bicimlerle_gosterir(
 ) -> None:
     urun_id = urun_ekle(uygulama_baglanti, eczaci, _bilgi(), FIYAT)
     uygulama_baglanti.execute(
-        "INSERT INTO stok_partileri (urun_id, parti_no, skt, miktar, alis_fiyati) "
+        "INSERT INTO stok_partileri (urun_id, parti_no, skt, miktar, birim_maliyet) "
         "VALUES (%s, 'P1', '2030-01-31', 5, 80)",
         (urun_id,),
     )
@@ -390,7 +390,7 @@ def test_pasif_yapma_onay_ister_stok_miktarini_soyler_reddedilirse_yapmaz(
     sorular = _onayla(monkeypatch, QMessageBox.StandardButton.No)
     urun_id = urun_ekle(uygulama_baglanti, eczaci, _bilgi(), FIYAT)
     uygulama_baglanti.execute(
-        "INSERT INTO stok_partileri (urun_id, parti_no, skt, miktar, alis_fiyati) "
+        "INSERT INTO stok_partileri (urun_id, parti_no, skt, miktar, birim_maliyet) "
         "VALUES (%s, 'P1', '2030-01-31', 5, 80)",
         (urun_id,),
     )

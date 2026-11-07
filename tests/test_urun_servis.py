@@ -95,7 +95,7 @@ def _diger_bilgi(ad: str = "Deneme Krem") -> UrunBilgisi:
 
 def _parti_ekle(baglanti: Baglanti, urun_id: int, miktar: int, skt: str = "2030-01-31") -> None:
     baglanti.execute(
-        "INSERT INTO stok_partileri (urun_id, parti_no, skt, miktar, alis_fiyati) "
+        "INSERT INTO stok_partileri (urun_id, parti_no, skt, miktar, birim_maliyet) "
         "VALUES (%s, %s, %s, %s, %s)",
         (urun_id, f"P{skt}{miktar}", skt, miktar, Decimal("80.00")),
     )
@@ -244,11 +244,12 @@ def test_kamu_fiyati_bos_olabilir(uygulama_baglanti: Baglanti, eczaci: Kullanici
 def test_fiyat_sutunlari_para_turundedir(uygulama_baglanti: Baglanti) -> None:
     satirlar = uygulama_baglanti.execute(
         "SELECT column_name, data_type FROM information_schema.columns "
-        "WHERE table_name IN ('urunler', 'fiyat_gecmisi', 'stok_partileri') "
+        "WHERE table_name IN ('urunler', 'fiyat_gecmisi', 'stok_partileri', 'stok_hareketleri') "
         "AND (column_name LIKE '%%psf%%' OR column_name LIKE '%%fiyat%%' "
-        "OR column_name LIKE '%%kdv%%')"
+        "OR column_name LIKE '%%kdv%%' OR column_name LIKE '%%maliyet%%' "
+        "OR column_name LIKE '%%tutar%%')"
     ).fetchall()
-    assert len(satirlar) >= 8
+    assert len(satirlar) >= 9
     assert {satir["data_type"] for satir in satirlar} == {"numeric"}
 
 

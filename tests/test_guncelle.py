@@ -98,6 +98,10 @@ def test_erisim_kaydi_degistirilemez_ve_silinemez(
         "TRUNCATE fiyat_gecmisi",
         "DELETE FROM urunler",
         "DELETE FROM stok_partileri",
+        "UPDATE stok_hareketleri SET miktar = 1",
+        "DELETE FROM stok_hareketleri",
+        "TRUNCATE stok_hareketleri",
+        "DELETE FROM tedarikciler",
     ],
 )
 def test_fiyat_gecmisi_degistirilemez_urun_ve_parti_silinemez(

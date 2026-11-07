@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import QLabel
 
 from arayuz.ana_pencere import AnaPencere
 from arayuz.kullanici_penceresi import KullanicilarPenceresi, ParolaDegistirPenceresi
+from arayuz.stok_penceresi import DepolarPenceresi, StokGirisiPenceresi
 from arayuz.urun_penceresi import UrunlerPenceresi
 from ayarlar import Ortam, VeritabaniAyari
 from moduller.kullanici.servis import Kullanici, Rol
@@ -84,6 +85,41 @@ def test_urunler_menusu_her_iki_role_de_acilir(
     pencere.urunler_eylemi.trigger()
 
     assert acilan == [1]
+
+
+@pytest.mark.usefixtures("qt_uygulamasi")
+def test_miat_ayari_yalnizca_eczaciya_gorunur() -> None:
+    personel = Kullanici(id=2, kullanici_adi="p", ad_soyad="Personel", rol=Rol.PERSONEL)
+    assert AnaPencere(Ortam.TEST, 1, KULLANICI, AYAR).miat_ayari_eylemi is not None
+    assert AnaPencere(Ortam.TEST, 1, personel, AYAR).miat_ayari_eylemi is None
+
+
+@pytest.mark.usefixtures("qt_uygulamasi")
+@pytest.mark.parametrize("rol", [Rol.ECZACI, Rol.PERSONEL])
+def test_stok_girisi_ve_depolar_menusu_her_iki_role_de_acilir(
+    monkeypatch: pytest.MonkeyPatch, rol: Rol
+) -> None:
+    acilan: list[str] = []
+
+    def _giris_exec(_pencere: StokGirisiPenceresi) -> int:
+        acilan.append("giris")
+        return 0
+
+    def _depo_exec(_pencere: DepolarPenceresi) -> int:
+        acilan.append("depo")
+        return 0
+
+    monkeypatch.setattr(StokGirisiPenceresi, "exec", _giris_exec)
+    monkeypatch.setattr(StokGirisiPenceresi, "_depolari_yukle", _listeyi_okuma)
+    monkeypatch.setattr(DepolarPenceresi, "exec", _depo_exec)
+    monkeypatch.setattr(DepolarPenceresi, "_yenile", _listeyi_okuma)
+    kullanici = Kullanici(id=1, kullanici_adi="test", ad_soyad="Test Kişi", rol=rol)
+    pencere = AnaPencere(Ortam.TEST, 1, kullanici, AYAR)
+
+    pencere.stok_girisi_eylemi.trigger()
+    pencere.depolar_eylemi.trigger()
+
+    assert acilan == ["giris", "depo"]
 
 
 @pytest.mark.usefixtures("qt_uygulamasi")

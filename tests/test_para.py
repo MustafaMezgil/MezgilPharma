@@ -3,7 +3,7 @@ from decimal import Decimal
 import pytest
 
 from moduller.hatalar import GorunurHata
-from moduller.para import oran_coz, para_coz, para_metni
+from moduller.para import oran_coz, para_coz, para_metni, yuvarla
 
 
 @pytest.mark.parametrize(
@@ -75,6 +75,38 @@ def test_oran_coz_hatali_orani_reddeder(metin: str) -> None:
 )
 def test_para_metni_turkce_bicimde_yazar(tutar: str, beklenen: str) -> None:
     assert para_metni(Decimal(tutar)) == beklenen
+
+
+@pytest.mark.parametrize(
+    ("tutar", "hane", "beklenen"),
+    [
+        ("0.125", 2, "0.13"),  # yarim ve ustu yukari (bankaci yuvarlamasi 0.12 verirdi)
+        ("0.135", 2, "0.14"),
+        ("0.124", 2, "0.12"),
+        ("90.90909", 4, "90.9091"),
+        ("0.03125", 4, "0.0313"),
+        ("10", 2, "10.00"),
+    ],
+)
+def test_yuvarla_yarim_ve_ustunu_yukari_yuvarlar(tutar: str, hane: int, beklenen: str) -> None:
+    sonuc = yuvarla(Decimal(tutar), hane)
+    assert sonuc == Decimal(beklenen)
+    assert str(sonuc) == beklenen
+
+
+def test_para_metni_ekranda_yarimi_yukari_yuvarlar() -> None:
+    assert para_metni(Decimal("90.9091")) == "90,91"
+    assert para_metni(Decimal("0.125")) == "0,13"
+
+
+@pytest.mark.parametrize(("metin", "beklenen"), [("12,3456", "12.3456"), ("1.234,5678", "1234.5678")])
+def test_para_coz_istenirse_dort_ondalik_okur(metin: str, beklenen: str) -> None:
+    assert para_coz(metin, "Birim fiyat", ondalik=4) == Decimal(beklenen)
+
+
+def test_para_coz_dort_ondalikta_da_besinci_haneyi_reddeder() -> None:
+    with pytest.raises(GorunurHata, match="Birim fiyat"):
+        para_coz("12,34567", "Birim fiyat", ondalik=4)
 
 
 def test_para_metni_okunabilen_metin_uretir() -> None:

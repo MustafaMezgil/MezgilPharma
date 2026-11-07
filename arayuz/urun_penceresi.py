@@ -33,6 +33,7 @@ from moduller.ilac.servis import (
     urun_onayla,
     urun_pasif_yap,
 )
+from arayuz.stok_penceresi import StokDetayiPenceresi, StokGirisiPenceresi
 from moduller.kullanici.servis import Kullanici, Rol
 from moduller.para import oran_coz, para_coz, para_metni
 from veritabani.baglanti import Baglanti
@@ -230,6 +231,8 @@ class UrunlerPenceresi(QDialog):
         self.duzenle_dugmesi = QPushButton("Düzenle")
         self.pasif_aktif_dugmesi = QPushButton("Pasif Yap")
         self.onayla_dugmesi = QPushButton("Onayla")
+        self.stok_girisi_dugmesi = QPushButton("Stok Girişi")
+        self.stok_detayi_dugmesi = QPushButton("Stok Detayı")
         kapat_dugmesi = QPushButton("Kapat")
 
         ust = QHBoxLayout()
@@ -244,6 +247,8 @@ class UrunlerPenceresi(QDialog):
             self.duzenle_dugmesi,
             self.pasif_aktif_dugmesi,
             self.onayla_dugmesi,
+            self.stok_girisi_dugmesi,
+            self.stok_detayi_dugmesi,
             kapat_dugmesi,
         ):
             dugme.setAutoDefault(False)
@@ -251,6 +256,8 @@ class UrunlerPenceresi(QDialog):
         alt.addWidget(self.duzenle_dugmesi)
         alt.addWidget(self.pasif_aktif_dugmesi)
         alt.addWidget(self.onayla_dugmesi)
+        alt.addWidget(self.stok_girisi_dugmesi)
+        alt.addWidget(self.stok_detayi_dugmesi)
         alt.addStretch()
         alt.addWidget(kapat_dugmesi)
         duzen = QVBoxLayout(self)
@@ -274,6 +281,8 @@ class UrunlerPenceresi(QDialog):
         self.pasifleri_goster.toggled.connect(self._yenile)
         self.onay_bekleyenler.toggled.connect(self._yenile)
         self.onayla_dugmesi.clicked.connect(self._onayla)
+        self.stok_girisi_dugmesi.clicked.connect(self._stok_girisi)
+        self.stok_detayi_dugmesi.clicked.connect(self._stok_detayi)
         self.tablo.itemSelectionChanged.connect(self._secim_degisti)
         self.tablo.itemDoubleClicked.connect(self._duzenle)
         self.yeni_dugmesi.clicked.connect(self._yeni)
@@ -294,6 +303,7 @@ class UrunlerPenceresi(QDialog):
                 limit=ARAMA_SINIRI,
             )
 
+        onceki = self._secili()
         self.hata_etiketi.clear()
         if not islemi_calistir(self._veritabani_ayari, self.hata_etiketi, _oku):
             return
@@ -311,6 +321,12 @@ class UrunlerPenceresi(QDialog):
             for sutun, deger in enumerate(degerler):
                 self.tablo.setItem(satir, sutun, QTableWidgetItem(deger))
         self.tablo.resizeColumnsToContents()
+        # Islemden sonra ayni urun secili kalsin; kullanici tekrar aramak zorunda kalmasin.
+        if onceki is not None:
+            for satir, urun in enumerate(self._liste):
+                if urun.id == onceki.id:
+                    self.tablo.selectRow(satir)
+                    break
         if len(self._liste) >= ARAMA_SINIRI:
             self.hata_etiketi.setText(
                 f"İlk {ARAMA_SINIRI} sonuç gösteriliyor. Aramayı daraltın."
@@ -337,21 +353,40 @@ class UrunlerPenceresi(QDialog):
         if pencere.exec() == QDialog.DialogCode.Accepted:
             self._yenile()
 
-    def _duzenle(self) -> None:
+    def _guncel_secili(self) -> Urun | None:
+        """Secili urunu veritabanindan yeniden okur: liste eski kalmis olabilir."""
         secili = self._secileni_al()
         if secili is None:
-            return
+            return None
         guncel: list[Urun] = []
 
-        # Liste eski kalmis olabilir: baska kasa fiyati degistirdiyse eskisi yazilmasin.
         def _oku(baglanti: Baglanti) -> None:
             guncel.append(urun_getir(baglanti, self._yapan, secili.id))
 
         if not islemi_calistir(self._veritabani_ayari, self.hata_etiketi, _oku):
+            return None
+        return guncel[0]
+
+    def _duzenle(self) -> None:
+        urun = self._guncel_secili()
+        if urun is None:
             return
-        pencere = UrunKartiPenceresi(self._veritabani_ayari, self._yapan, guncel[0])
+        pencere = UrunKartiPenceresi(self._veritabani_ayari, self._yapan, urun)
         if pencere.exec() == QDialog.DialogCode.Accepted:
             self._yenile()
+
+    def _stok_girisi(self) -> None:
+        urun = self._guncel_secili()
+        if urun is None:
+            return
+        pencere = StokGirisiPenceresi(self._veritabani_ayari, self._yapan, urun)
+        pencere.exec()
+        self._yenile()
+
+    def _stok_detayi(self) -> None:
+        urun = self._guncel_secili()
+        if urun is not None:
+            StokDetayiPenceresi(self._veritabani_ayari, self._yapan, urun).exec()
 
     def _pasif_aktif(self) -> None:
         urun = self._secileni_al()
